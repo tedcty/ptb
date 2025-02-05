@@ -6,8 +6,8 @@ import numpy as np
 import pandas as pd
 from scipy.spatial.transform import Rotation
 
-from util.data import Yatsdo
-from util.io.helper import StorageIO
+from ptb.core.obj import Yatsdo
+from ptb.util.io.mocap.low_lvl import c3d
 
 
 class TRC(Yatsdo):
@@ -207,46 +207,52 @@ class TRC(Yatsdo):
         return trc
 
     @staticmethod
+    def __simple_c3d_reader__(filename, exportas_text=False):
+        with open(filename, 'rb') as c3dfile:
+            reader = c3d.Reader(c3dfile)
+            units = reader.groups.get('POINT').get('UNITS').bytes.decode("utf-8")
+            ret = ""
+            markers = {'time': []}
+            count = 0
+            marker_labels = ['time']
+            for pl in reader.point_labels:
+                lb = pl.strip()
+                if len(lb) == 0:
+                    lb = 'M{:03d}'.format(count)
+                    count += 1
+                marker_labels.append(lb)
+                markers[lb] = []
+            analogs = []
+            for i, points, analog in reader.read_frames():
+                if isinstance(analog, np.ndarray):
+                    if len(analog.shape) > 1:
+                        analog_temp = pd.DataFrame(data=analog, columns=reader.analog_labels)
+                        # analogs.append(analog[:, 0])
+                        # This contains more than 1 frame as there is usually 5 frames per 1 frame of point data if
+                        # data OMC is recorded at 200 Hz and analog data recorded at 1000 Hz
+                        analogs.append(analog_temp)
+                markers[marker_labels[0]].append((i - 1) * (1 / reader.point_rate))
+                for j in range(1, len(marker_labels)):
+                    errors = points[j - 1, 3:]
+                    p = points[j - 1, 0:3]
+                    for e in errors:
+                        if e == -1:
+                            p = np.asarray([np.NaN, np.NaN, np.NaN])
+                            break
+                    markers[marker_labels[j]].append(p)
+                if exportas_text:
+                    ret += 'frame {}: point {}, analog {}'.format(
+                        i, points, analog)
+            box = {'markers': markers,
+                   'mocap': {"rates": reader.point_rate, "units": units, "header": reader.header}, 'text': ret,
+                   "analog": analogs}
+        return box
+
+    @staticmethod
     def create_from_c3d(data, fill_data=False):
-        c3d_data = StorageIO.simple_readc3d(data)
-        return TRC.create_from_c3d_dict(c3d_data, data)
-        # header = c3d_data["mocap"]["header"]
-        # trc_header = {k.value: -1 for k in MocapFlags.defaults_to_list()}
-        # trc_header[MocapFlags.DataRate.value] = header.frame_rate
-        # trc_header[MocapFlags.CameraRate.value] = header.frame_rate
-        # trc_header[MocapFlags.NumFrames.value] = header.last_frame
-        # trc_header[MocapFlags.Units.value] = MocapFlags.unit(c3d_data['mocap']['units']).value
-        #
-        # trc_header[MocapFlags.OrigDataStartFrame.value] = header.first_frame
-        # trc_header[MocapFlags.OrigDataRate.value] = header.frame_rate
-        # trc_header[MocapFlags.OrigNumFrames.value] = header.last_frame
-        # markers = c3d_data["markers"]
-        # markers_np = {n: np.array(markers[n]) for n in markers}
-        # marker_labels = [m for m in markers_np]
-        # trc_header[MocapFlags.NumMarkers.value] = len(markers)-1
-        # frames_block = np.zeros([header.last_frame, (3 * len(marker_labels))+1])
-        # col_names = ['Frame#', 'time']
-        # inx = 1
-        # frames_block[:, 0] = [int(n+1) for n in range(0, header.last_frame)]
-        # frames_block[:, 1] = markers_np[marker_labels[0]]
-        # markers_set = {}
-        # for m in range(1, len(marker_labels)):
-        #     lb = marker_labels[m]
-        #     m_np = markers_np[lb]
-        #     s = (m * 3 + 1) - 2
-        #     e = (m * 3 + 4) - 2
-        #     frames_block[:, s: e] = m_np
-        #     col_names.append(marker_labels[m] + '_X{0}'.format(inx))
-        #     col_names.append(marker_labels[m] + '_Y{0}'.format(inx))
-        #     col_names.append(marker_labels[m] + '_Z{0}'.format(inx))
-        #     markers_set[marker_labels[m]] = pd.DataFrame(data=m_np, columns=['X{0}'.format(inx), 'Y{0}'.format(inx), 'Z{0}'.format(inx)])
-        #     inx += 1
-        #
-        # trc = TRC(frames_block, col_names=col_names, filename=data[:data.rindex(".")]+".trc", fill_data=fill_data)
-        # trc.headers = trc_header
-        # trc.marker_set = markers_set
-        # trc.marker_names = marker_labels[1:]
-        # return trc
+        c3d_data = TRC.__simple_c3d_reader__(data)
+        return TRC.create_from_c3d_dict(c3d_data, data, fill_data)
+
 
     def z_up_to_y_up(self):
         offset = 2

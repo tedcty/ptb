@@ -7,7 +7,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 from scipy.spatial.transform import Rotation as R
 from sklearn.decomposition import PCA
-from util.data import StorageIO, BasicVoxelInfo
+from ptb.util.io.helper import StorageIO, BasicVoxelInfo
 
 '''
 Authors: Ted Yeung and Thorben Pauli

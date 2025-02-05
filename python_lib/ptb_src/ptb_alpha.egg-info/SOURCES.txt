@@ -25,8 +25,8 @@ ptb/util/math/transformation.py
 ptb/util/osim/__init__.py
 ptb/util/osim/osim_model.py
 ptb/util/osim/osim_store.py
-ptb_beta.egg-info/PKG-INFO
-ptb_beta.egg-info/SOURCES.txt
-ptb_beta.egg-info/dependency_links.txt
-ptb_beta.egg-info/requires.txt
-ptb_beta.egg-info/top_level.txt
+ptb_alpha.egg-info/PKG-INFO
+ptb_alpha.egg-info/SOURCES.txt
+ptb_alpha.egg-info/dependency_links.txt
+ptb_alpha.egg-info/requires.txt
+ptb_alpha.egg-info/top_level.txt
