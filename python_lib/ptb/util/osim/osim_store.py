@@ -1,5 +1,9 @@
+import os
 from enum import Enum
 import csv
+
+from util.data import Yatsdo
+from util.io.helper import StorageIO, StorageType
 
 
 class HeadersLabels(Enum):
@@ -12,7 +16,7 @@ class HeadersLabels(Enum):
     notes = "notes"
 
 
-class OsimStorage(object):
+class OsimStorageV1(object):
     # Simple Storage Object that mimics sto files used with opensim
     def __init__(self, in_filenamme=None, out_filenamme=None):
         self.header = {HeadersLabels.nRows: 0,
@@ -132,3 +136,102 @@ class OsimStorage(object):
                 print("Name too long: " + self.data_file_out)
 
 
+class OSIMStorageV2(Yatsdo):
+    """
+    Coordinates
+    version=1
+    nRows=4269
+    nColumns=40
+    inDegrees=yes
+
+    Units are S.I. units (second, meters, Newtons, ...)
+    If the header above contains a line with 'inDegrees', this indicates whether rotational values are in degrees (yes) or radians (no).
+
+    endheader
+    """
+    def __init__(self, data, col_names=None, fill_data=False, filename="", header=None, ext=".sto"):
+        super().__init__(data, col_names, fill_data)
+        self.filename = filename
+        self.header = header
+        self.ext = ext
+
+    @staticmethod
+    def yes_no_to_true_false(wo):
+        if 'yes' in wo.lower():
+            return True
+        elif 'no' in wo.lower():
+            return False
+        return None
+
+    @staticmethod
+    def true_false_to_yes_no(wo):
+        if wo:
+            return 'yes'
+        elif not wo:
+            return 'no'
+        return None
+
+    @staticmethod
+    def read(filename):
+        if not os.path.exists(filename):
+            return None
+        s = StorageIO.load(filename, StorageType.mot)
+
+        k = s.info["header"]
+        header = {"type": k[0].strip(),
+                  "version": int(k[1].split('=')[1].strip()),
+                  "nRows": int(k[2].split('=')[1].strip()),
+                  "nColumns": int(k[3].split('=')[1].strip()),
+                  "inDegrees": OSIMStorage.yes_no_to_true_false(k[4].split('=')[1].strip()),
+                  "note": "{0}{1}".format(k[6], k[7]),
+                  "end": k[9]
+                  }
+        ret = OSIMStorage(s.data, filename=filename, header=header)
+        return ret
+
+    def update(self):
+        super().update()
+        self.header['nRows'] = self.data.shape[0]
+        self.header['nColumns'] = self.data.shape[1]
+        pass
+
+    def header2string(self, h):
+        if h not in ['type', 'note', 'end']:
+            if h not in ['inDegrees']:
+                return "{0}={1}\n".format(h, self.header[h])
+            else:
+                return "{0}={1}\n".format(h, OSIMStorage.true_false_to_yes_no(self.header[h]))
+        else:
+            return "{0}{1}\n".format('', self.header[h])
+
+    def write(self, filename):
+        lines = [self.header2string(h) for h in self.header]
+        cols = ""
+        for c in self.col_labels:
+            cols += c
+            cols += "\t"
+        lines.append(cols.strip() + "\n")
+        for i in range(0, self.data.shape[0]):
+            ret = ""
+            for j in range(0, self.data.shape[1]):
+                ret += "{0:.8f}\t".format(self.data[i,j])
+            ret.strip()
+            ret += '\n'
+            lines.append(ret)
+            pass
+        # f = open(filename + ".csv", "r")
+        # count = 0
+        # stream = "Hello world"
+        # while len(stream) > 0:
+        #     stream = f.readline()
+        #     if count == 0:
+        #         count += 1
+        #         continue
+        #     else:
+        #         count += 1
+        #         lines.append(stream)
+        # f.close()
+
+        with open(filename, 'w') as writer:
+            writer.writelines(lines)
+        pass

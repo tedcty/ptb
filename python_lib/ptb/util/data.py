@@ -10,6 +10,7 @@ from util.io.mesh import *
 from util.io.mocap.file_formats import *
 from util.math.filters import *
 from util.math.stat import *
+from util.osim.osim_store import OSIMStorageV2
 
 """
 TODOs:
@@ -710,7 +711,7 @@ class IMU(Yatsdo):
         p.to_csv(filename, index=False)
 
 
-class OSIMStorage(OSIMStorage):
+class OSIMStorage(OSIMStorageV2):
     def __init__(self, data, col_names=None, fill_data=False, filename="", header=None, ext=".sto"):
         super().__init__(data, col_names, fill_data, filename, header, ext)
 

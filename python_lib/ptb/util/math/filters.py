@@ -2,6 +2,10 @@ from scipy.signal import butter, filtfilt
 import pandas as pd
 import numpy as np
 
+'''
+Authors: Ted Yeung
+Date: Nov 2020
+'''
 
 class Butterworth(object):
 
