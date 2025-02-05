@@ -330,7 +330,13 @@ class Param(object):
         assert self.dimensions, \
             '{}: cannot get value as {} array!'.format(self.name, fmt)
         elems = array.array(fmt)
-        elems.fromstring(self.bytes)
+        try:
+            elems.fromstring(self.bytes)
+        except AttributeError:
+            try:
+                elems.frombytes(self.bytes)
+            except AttributeError:
+                pass
         return np.array(elems).reshape(self.dimensions)
 
     @property
@@ -779,6 +785,7 @@ class Reader(Manager):
                 break
 
             name = buf.read(abs(chars_in_name)).decode('utf-8').upper()
+
             offset_to_next, = struct.unpack('<h', buf.read(2))
 
             if group_id > 0:

@@ -1,28 +1,127 @@
 from scipy import interpolate
-from yatpkg.math.filters import Butterworth
-import numpy as np
-import pandas as pd
-from enum import Enum
-import os
-import yatpkg.util.c3d as c3d
-import vtk
-import math
-from copy import deepcopy
+from typing import Optional
 
-'''
-Authors: Ted Yeung
-Date: Nov 2020
-'''
+import math
+from datetime import datetime, timezone
+from vtkmodules.vtkIOXML import vtkXMLPolyDataWriter
+
+from util.io.helper import *
+from util.io.mesh import *
+from util.io.mocap.file_formats import *
+from util.math.filters import *
+from util.math.stat import *
+
+"""
+TODOs:
+> Add Documentation to code
+"""
+
+def resample(data, target_freq):
+    return resample(data, target_freq)
+
+def stamp():
+    now = datetime.now()
+    # dd/mm/YY H:M:S
+    dt_string = now.strftime("%d/%m/%Y %H:%M:%S.%f")
+    return dt_string, now
+
+
+def date_time_convert(date_str):
+    return datetime.strptime(date_str, "%d/%m/%Y %H:%M:%S")
+
+def date_utcnow():
+    return datetime.now(timezone.utc)
+
+def milli():
+    date = date_utcnow() - datetime(1970, 1, 1)
+    seconds = (date.total_seconds())
+    milliseconds = round(seconds * 1000)
+    return milliseconds
+
+
+class Yac3do:
+    # Yet another c3d data object
+    #
+    def __init__(self, filename: str=None):
+        self.filename = filename
+        self.c3d_dict = StorageIO.readc3d_general(filename)
+        self.__trc__ = None
+        self.__trc__dirty__ = True
+        pass
+
+    @property
+    def trc(self):
+        if self.__trc__dirty__ or self.__trc__ is None:
+            ret = self.c3d_dict['point_data'].copy()
+            lab = ['time']
+            for m in self.marker_labels:
+                lab.append(m)
+            markers = {m: [] for m in lab}
+            for m in lab:
+                if m == 'time':
+                    markers[m] = [n*(1/self.c3d_dict['meta_data']['trial']['camera_rate']) for n in range(0, self.c3d_dict['meta_data']['trial']['end_frame'])]
+                else:
+                    columns = [n for n in ret.columns if m in n]
+                    markers[m] = ret[columns]
+                pass
+            self.c3d_dict['markers'] = markers
+            self.__trc__ = TRC.create_from_c3d_dict(self.c3d_dict, self.filename)
+            self.__trc__dirty__ = False
+        return self.__trc__
+
+    @property
+    def marker_labels(self):
+        return self.c3d_dict['point_label']
+
+    @property
+    def markers(self):
+        frames = [i+1 for i in range(0, self.c3d_dict['point_data'].shape[0])]
+        t = [i*(1/self.c3d_dict['point_rate']) for i in range(0, self.c3d_dict['point_data'].shape[0])]
+        ret = self.c3d_dict['point_data'].copy()
+        ret.insert(0, 'frames', frames)
+        ret.insert(1, 'time', t)
+        return ret
+
+    @property
+    def analog(self):
+        return self.c3d_dict['analog_data']
 
 
 class Yatsdo:
+    @staticmethod
+    def create_from_storage_io(s, para=None):
+        cols = [c for c in s.data.columns]
+        ret = np.zeros(s.data.shape)
+        t = np.array(s.data['time'].to_list())
+        ret[:, 0] = t
+        cut = 5
+        fs = 1 / s.dt
+        order = 4
+        if para is not None:
+            try:
+                b = para['butter']
+                cut = b['cut']
+                fs = b['fs']
+                order = b['order']
+            except KeyError:
+                pass
+        for c in range(1, len(cols)):
+            k = np.array(s.data[cols[c]].to_list())
+            k_ret = Butterworth.butter_low_filter(k, cut, fs, order)
+            ret[:, c] = k_ret
+        ret_pd = pd.DataFrame(data=ret, columns=cols)
+        return Yatsdo(ret_pd)
+
+    def to_panda_data_frame(self):
+        ret = pd.DataFrame(data=self.data, columns=self.column_labels)
+        return ret
     # Yet another time series data object
     #
     # This object take a 2D np array and creates
     # functions for simple data manipulation
     # i.e. resampling data
     # Assume get_first column is time
-    def __init__(self, data, col_names=[]):
+    def __init__(self, data, col_names=[], fill_data=False, time_col=0):
         self.col_labels = col_names
         if isinstance(data, np.ndarray):
             self.data: np.ndarray = data
@@ -32,22 +131,179 @@ class Yatsdo:
         else:
             self.data: np.ndarray = np.array(data)
         self.curve = {}
-        self.x = self.data[:, 0]
-        for i in range(1, self.data.shape[1]):
-            p = interpolate.InterpolatedUnivariateSpline(self.x, self.data[:, i])
-            self.curve[i] = p
+        self.dev_curve = {}
+        self.x = self.data[:, time_col]
+        if self.data.shape[0] > 3:
+            for i in range(1, self.data.shape[1]):
+                p = interpolate.InterpolatedUnivariateSpline(self.x, self.data[:, i])
+                a = np.isnan(self.data[:, i])
+                b = [b for b in range(0, a.shape[0]) if not a[b]]
+                if len(b) < a.shape[0] and fill_data:
+                    p = interpolate.InterpolatedUnivariateSpline(self.x[b], self.data[b, i])
+                self.curve[i] = p
+                self.dev_curve[i] = p.derivative()
+
         self.size = self.data.shape
         pass
 
+    @staticmethod
+    def load(filepath: str):
+        """
+        This method direct loads bapple into memory
+        :param filepath:
+        :param sep: path sep
+        :param unzip: set to unzip or not default False
+        :param del_temp:
+        :return:
+        """
+        start = time.time()
+        bar = tqdm(total=5, desc="Cooking", ascii=False,
+                   ncols=120,
+                   colour="#6e5b5b")
+        block = np.load(filepath)
+        bar.update(1)
+        meta_data = json.load(io.BytesIO(block['meta_data.json']))
+        bar.update(1)
+        print("Loading apples and bananas")
+        data_block = None
+        a_block = None
+        try:
+            data_block = np.load(io.BytesIO(block['data.npz']))
+        except KeyError:
+            a_block = np.frombuffer(block['a.npz'])
+            a_block = a_block.reshape(meta_data['pineapple']['shape'])
+        bar.update(1)
+        print("Preparing the pineapple")
+        a_bapple = None
+        if data_block is not None:
+            a_bapple = pd.DataFrame(data=np.asarray(data_block['a']), columns=meta_data['pineapple'])
+
+        if a_block is not None:
+            a_bapple = pd.DataFrame(data=a_block, columns=meta_data['pineapple']['cols'])
+        bar.update(1)
+        bapple = Yatsdo(a_bapple)
+        bar.update(1)
+        bar.close()
+        end = time.time()
+        print("Order up: One Yatdos > Load completed in {0:0.2f}s".format(end - start))
+        return bapple
+
+    def export(self, filename: str, pathto: str, compresslevel=1):
+        """
+        Export bapple to a zip file
+        Note: May fail if there is not enough space for the temp folder
+        :param filename:
+        :param pathto:
+        :return:
+        """
+
+        if not pathto.endswith("/") or not pathto.endswith("\\"):
+            pathto += "/"
+
+        meta_data = {}
+
+        if not os.path.exists(pathto+"temp/"):
+            os.makedirs(pathto+"temp/")
+
+        num_files = 0
+        if self.data is not None:
+            num_files += 1
+        num_files += 1
+
+        with zipfile.ZipFile(pathto + filename, mode="w", compression=zipfile.ZIP_DEFLATED, compresslevel=compresslevel) as archive:
+            bar = tqdm(total=num_files, desc="Saving to {0} >".format(filename), ascii=False,
+                       ncols=120,
+                       colour="#6e5b5b")
+            if self.data is not None:
+                bar.desc = "Saving to {0} > Exporting Pineapple".format(filename)
+                bar.refresh()
+                meta_data['pineapple'] = {'cols': [c for c in self.column_labels], 'shape': self.data.shape}
+                anp = self.data
+
+                archive.writestr("a.npz", anp.tobytes())
+                bar.update(1)
+
+            bar.desc = "Saving to {0} > Exporting meta_data.json".format(filename)
+            bar.refresh()
+            json_string = json.dumps(meta_data)
+            meta_data_bytes = json_string.encode('utf-8')
+            archive.writestr("meta_data.json", meta_data_bytes)
+            bar.update(1)
+            bar.close()
+
+    @property
+    def shape(self):
+        return self.data.shape
+
+    @property
+    def dt(self):
+        """
+        Get the mean sampling rate of the data
+        :return: sampling rate (float)
+        """
+        a = 0.01    # default
+        if self.x.shape[0] > 2:
+            a = np.nanmean(self.x[1:] - self.x[:-1])
+        return a
+
     # Given time points it will get the accompanying data
-    def get_samples(self, time_points):
+    def get_samples(self, time_points, assume_time_first_col=True, as_pandas=False):
+        a = [time_points]
+        # additional_col = 0
+        # if not assume_time_first_col:
+        #     additional_col = 1
+        # cols = self.data.shape[1] + additional_col
+        cols = self.data.shape[1]
+        rows = len(time_points)
+        ret = np.zeros([rows, cols])
+        if not assume_time_first_col:
+            ret[:, 0] = [i for i in range(1, rows+1)]
+            ret[:, 1] = time_points
+            for i in range(2, self.data.shape[1]):
+                a.append(self.curve[i](time_points))
+                ret[:, i] = self.curve[i](time_points)
+        else:
+            ret[:, 0] = time_points
+            for i in range(1, self.data.shape[1]):
+                a.append(self.curve[i](time_points))
+                ret[:, i] = self.curve[i](time_points)
+
+        # return np.squeeze(np.array(a)).transpose()
+
+        if as_pandas:
+            if len(self.column_labels) > 0:
+                col = self.column_labels
+                return pd.DataFrame(data=ret, columns=col)
+            else:
+                return pd.DataFrame(data=ret)
+
+        return ret
+
+    def get_sample(self, time_point, assume_time_first_col=True):
+        additional_col = 0
+        if not assume_time_first_col:
+            additional_col = 1
+        cols = self.data.shape[1] + additional_col
+        ret = np.zeros([1, cols])
+        ret[:, 0] = time_point
+        for i in range(1, self.data.shape[1]):
+            ret[:, i] = self.curve[i](time_point)
+        return ret[0]
+
+    # Given time points it will get the accompanying data
+    def get_samples_dev(self, time_points):
         a = [time_points]
         for i in range(1, self.data.shape[1]):
-            a.append(self.curve[i](time_points))
+            a.append(self.dev_curve[i](time_points))
         return np.squeeze(np.array(a)).transpose()
 
     def update(self):
         self.x = self.data[:, 0]
+        for i in range(1, self.data.shape[1]):
+            p = interpolate.InterpolatedUnivariateSpline(self.x, self.data[:, i])
+            self.curve[i] = p
+
+    def update_Spline(self):
         for i in range(1, self.data.shape[1]):
             p = interpolate.InterpolatedUnivariateSpline(self.x, self.data[:, i])
             self.curve[i] = p
@@ -136,17 +392,277 @@ class Yadict(object):
     def get_keys(self):
         return [k for k in self.d]
 
+class Mesh:
+    def __init__(self, filename=None, ignore=False):
+        self.mesh_filename = filename
+        self.actor = None
+        self.mesh_tool = VTKMeshUtl.get_type(filename)
+        self.reader = self.mesh_tool.reader()
+        self.current_reader = self.mesh_tool.label()
 
-class IMU(object):
+        self.mesh = None
+        self.__points__ = None
+        self.cog = None
+        self.mc = None
+        self.volume = None
+        self.ignore_check = ignore
+        if self.mesh_filename is not None:
+            self.load_as_vtk(self.mesh_filename)
+
+    @property
+    def points(self):
+        return self.__points__
+
+    @points.setter
+    def points(self, p):
+        if isinstance(p, vtk.vtkPolyData):
+            self.__points__ = VTKMeshUtl.extract_points(p)
+        elif isinstance(p, np.ndarray):
+            self.__points__ = p
+        else:
+            self.__points__ = None
+
+    @staticmethod
+    def convert_vtp_2_stl(vtp_file, stl_out):
+        reader = vtk.vtkXMLPolyDataReader()
+        reader.SetFileName(vtp_file)
+        reader.Update()
+
+        stl_writer = vtk.vtkSTLWriter()
+        stl_writer.SetFileName(stl_out)
+        stl_writer.SetInputConnection(reader.GetOutputPort())
+        stl_writer.Write()
+
+    @staticmethod
+    def convert_vtp_2_vtp(vtp_file, stl_out):
+        reader = vtk.vtkXMLPolyDataReader()
+        reader.SetFileName(vtp_file)
+        reader.Update()
+
+        vtp_writer = vtkXMLPolyDataWriter()
+        vtp_writer.SetFileName(stl_out)
+        vtp_writer.SetDataModeToAscii()
+        vtp_writer.SetInputConnection(reader.GetOutputPort())
+        vtp_writer.Write()
+
+    @staticmethod
+    def convert(in_file, out_file):
+        in_poly = VTKMeshUtl.load(in_file)
+        VTKMeshUtl.write(out_file, in_poly)
+
+    @staticmethod
+    def convert_batch(working_dir: str, to_ext: str = ".ply"):
+        if os.path.exists(working_dir):
+            if not working_dir.endswith("/") or working_dir.endswith("\\"):
+                working_dir += "/"
+            wr_list = [f for f in os.listdir(working_dir) if VTKMeshUtl.is_valid(working_dir+f)]
+            for w in wr_list:
+                en = w.rindex(".")
+                Mesh.convert(working_dir + w, working_dir + w[:en] + to_ext)
+
+    @staticmethod
+    def convert_vtp_2_stl_batch(wr):
+        wr_list = os.listdir(wr)
+        for w in wr_list:
+            en = w.rindex(".")
+            print(w[:en])
+            Mesh.convert_vtp_2_stl(wr + w[:en] + '.vtp', wr + w[:en] + '.stl')
+
+    def load_as_vtk(self, filename):
+        self.mesh_filename: str = filename
+        self.mesh_tool = VTKMeshUtl.get_type(self.mesh_filename)
+        self.reader = self.mesh_tool.reader()
+        self.mesh = VTKMeshUtl.load(self.mesh_filename)
+        self.cog = VTKMeshUtl.cog(self.mesh)
+        self.volume = VTKMeshUtl.volume(self.mesh)
+        self.mc = self.cog
+        self.points = VTKMeshUtl.extract_points(self.mesh)
+        mapper = vtk.vtkPolyDataMapper()
+        if vtk.VTK_MAJOR_VERSION <= 5:
+            # mapper.SetInput(reader.GetOutput())
+            mapper.SetInput(self.mesh)
+        else:
+            mapper.SetInputData(self.mesh)
+        self.actor = vtk.vtkActor()
+        self.actor.SetMapper(mapper)
+
+    @property
+    def center_of_gravity(self):
+        return self.cog
+
+    @property
+    def mesh_center(self):
+        return self.mc
+
+    def apply_transform(self, m):
+        axis = 0
+        if self.points.shape[0] == 3:
+            axis = 1
+        dummy = np.ones([4, self.points.shape[axis]])
+
+        if self.points.shape[0] == 3:
+            dummy[:3, :] = self.points
+        else:
+            dummy[:3, :] = self.points.T
+
+        self.points = (np.matmul(m, dummy))[:3, :].T
+        self.update()
+
+    def update(self):
+        VTKMeshUtl.update_poly_w_points(self.mesh)
+        self.cog = VTKMeshUtl.cog(self.mesh)
+        self.volume = VTKMeshUtl.volume(self.mesh)
+        self.mc = self.cog
+
+    def center_mesh(self):
+        trf = np.eye(4)
+        trf[0:3, 3] = -self.cog
+        self.apply_transform(trf)
+
+    def translate_mesh(self, trl):
+        trf = np.eye(4)
+        trf[0:3, 3] = trl
+        self.apply_transform(trf)
+
+    def primary_axes(self):
+        # primary X, secondary y, tertiary Z
+        centered_data, cm = Stat.center_data(self.points)
+        c = Stat.covariance_matrix(centered_data)
+        e1, v1 = Stat.eig_rh(c)
+        return v1, cm
+
+    def rotate_points(self, r):
+        # assumes r is 3x3
+        new_points = np.matmul(r, self.points.transpose())
+        return new_points.transpose()
+
+    def principle_alignment(self, cogmcpstv=False):
+        # center mesh to cloud centre
+        v0, t0 = self.primary_axes()
+        trf = np.eye(4)
+        trf[0:3, 0:3] = v0.transpose()
+        trf[:3, 3] = t0
+        self.apply_transform(trf)
+        diff = self.cog - self.mc
+        if cogmcpstv and diff[0] < 0:
+            # assumes cog and mesh centre is different
+            r = Rotation.from_euler("xyz", [0, 0, np.pi])
+            trf = np.eye(4)
+            trf[0:3, 0:3] = r
+            self.apply_transform(trf)
+        pass
+
+    def write_mesh(self, filename):
+        VTKMeshUtl.write(filename, self.mesh)
+
+class IMU(Yatsdo):
     '''
-    Will need to restructure
+    This is IMU data storage object
     '''
-    def __init__(self, acc: Yatsdo, gyro: Yatsdo, mag=None, ori=None):
-        self.acc = acc
-        self.gyr = gyro
-        self.mag = mag
+
+    window_frame = 0
+    window_time = 1
+
+    def __init__(self, data: [pd.DataFrame, np.ndarray], col_names: list = None, acc: list = None, gyro: list = None,
+                 mag:list = None, ori=None):
+        if col_names is None:
+            col_names = []
+        super().__init__(data, col_names)
+        self.acc_id: Optional[list] = acc
+        self.gyr_id: Optional[list] = gyro
+        self.mag_id: Optional[list] = mag
         self.ori = ori
         self.ori_filtered = True
+
+
+    @property
+    def acc_gyr_data(self):
+        acc_gyr_id = []
+        for i in self.acc_id:
+            acc_gyr_id.append(i)
+        for j in self.gyr_id:
+            acc_gyr_id.append(j)
+        if isinstance(self.data, pd.DataFrame):
+            return self.data[self.column_labels[acc_gyr_id]]
+        elif isinstance(self.data, np.ndarray):
+            ret = pd.DataFrame(data=self.data, columns=self.column_labels)
+            get_ = [self.column_labels[c] for c in acc_gyr_id]
+            get_.insert(0, "time")
+            return ret[get_]
+
+    @property
+    def acc(self):
+        if isinstance(self.data, pd.DataFrame):
+            return self.data[self.column_labels[self.acc_id]]
+        elif isinstance(self.data, np.ndarray):
+            ret = pd.DataFrame(data=self.data, columns=self.column_labels)
+            get_ = [self.column_labels[c] for c in self.acc_id]
+            get_.insert(0, "time")
+            return ret[get_]
+
+    @property
+    def gyr(self):
+        if isinstance(self.data, pd.DataFrame):
+            return self.data[self.column_labels[self.gyr_id]]
+        elif isinstance(self.data, np.ndarray):
+            ret = pd.DataFrame(data=self.data, columns=self.column_labels)
+            get_ = [self.column_labels[c] for c in self.gyr_id]
+            get_.insert(0, "time")
+            return ret[get_]
+
+    @property
+    def mag(self):
+        if isinstance(self.data, pd.DataFrame):
+            return self.data[self.column_labels[self.mag_id]]
+        elif isinstance(self.data, np.ndarray):
+            ret = pd.DataFrame(data=self.data, columns=self.column_labels)
+            get_ = [self.column_labels[c] for c in self.mag_id]
+            get_.insert(0, "time")
+            return ret[get_]
+
+    @acc.setter
+    def acc(self, data):
+        raise NotImplementedError
+
+    @gyr.setter
+    def gyr(self, data):
+        raise NotImplementedError
+
+    @mag.setter
+    def mag(self, data):
+        raise NotImplementedError
+
+    @staticmethod
+    def create(s: StorageIO, key='TS'):
+        rate = s.info['devices']['Device Sampling Rate']
+        time = [i*(1/rate) for i in range(0, s.data.shape[0])]
+        imu_labels = [c for c in s.data.columns if ('TS' in c and 'acc' in c) or ('TS' in c and 'gyr' in c) or ('TS' in c and 'mag' in c)]
+        imu_id = []
+        for c in imu_labels:
+            elem = c.split('-')[1]
+            idx = (key+'-'+elem).strip()
+            if idx not in imu_id:
+                imu_id.append(idx)
+        imu_labels.insert(0, "time")
+        imu_labels_dict = {"a": imu_labels}
+        if len(imu_id) > 1:
+            imu_labels_dict = {c: [d for d in imu_labels if c in d or 'time' in d] for c in imu_id}
+        ret = {}
+
+        def set_imu(imu_ls, s0, time0):
+            temp = s0[imu_ls[1:]]
+            data = np.zeros([temp.shape[0], temp.shape[1] + 1])
+            data[:, 0] = time0
+            data[:, 1:] = temp
+            imu = IMU(data, imu_ls)
+            imu.acc_id = [c for c in range(0, len(imu_labels)) if 'acc' in imu_labels[c].lower()]
+            imu.gyr_id = [c for c in range(0, len(imu_labels)) if 'gyr' in imu_labels[c].lower()]
+            imu.mag_id = [c for c in range(0, len(imu_labels)) if 'mag' in imu_labels[c].lower()]
+            return imu
+
+        for k in imu_labels_dict:
+            ret[k] = set_imu(imu_labels_dict[k], s.data[imu_labels_dict[k][1:]], time)
+        return ret
 
     def butterworth_filter(self, cut_off, sampling_rate):
         for d in range(1, self.acc.size[1]):
@@ -194,274 +710,64 @@ class IMU(object):
         p.to_csv(filename, index=False)
 
 
-class StorageType(Enum):
-    unknown = [-1, 'unknown']
-    nexus = [0, 'csv']
-    mot = [1, 'mot']
-    C3D = [3, 'c3d']
-    csv = [4, 'csv']
-
-    @staticmethod
-    def check_for_known(ext):
-        for st in StorageType:
-            s = st.value
-            if s[1] in ext.lower():
-                return st
-        return StorageType.unknown
+class OSIMStorage(OSIMStorage):
+    def __init__(self, data, col_names=None, fill_data=False, filename="", header=None, ext=".sto"):
+        super().__init__(data, col_names, fill_data, filename, header, ext)
 
 
-class StorageIO(object):
+class StorageIO(StorageIO):
     def __init__(self, store: pd.DataFrame = None, buffer_size: int = 10):
-        # A storage object that helps read (mot or csv with known formats) and write csv
-        self.buffer = []
-        self.buffer_size = buffer_size
-        if store is not None:
-            self.buffer.append(store)
-        self.info = {}
-
-    @property
-    def data(self):
-        # returns last loaded
-        return deepcopy(self.buffer[-1])
-
-    @data.setter
-    def data(self, x):
-        if len(self.buffer) >= 10:
-            self.buffer.pop(0)
-        self.buffer.append(x)
-
-    @staticmethod
-    def find_nexus_header(filename):
-        f = open(filename, "r")
-        start_id = 0
-        end_id = 0
-        ids = 0
-        stream = "hoi"
-        boo = True
-        boo1 = True
-        while len(stream) > 0:
-            stream = f.readline()
-            if stream.find("Frame") > -1 and boo:
-                start_id = ids + 2
-                boo = False
-            cleaned = stream.strip()
-            if len(cleaned) == 0 and boo1 and not boo:
-                boo1 = False
-                end_id = ids + 2
-            ids += 1
-        f.close()
-
-        if ids > 0:
-            return [i for i in range(0, start_id)], [start_id, end_id]
-        else:
-            return []
-
-    @staticmethod
-    def mot_header(filename):
-        f = open(filename, "r")
-        stream = "hoi"
-        index = 0
-        while len(stream) > 0:
-            stream = f.readline()
-            if stream.find("endheader") > -1:
-                break
-            index += 1
-        f.close()
-        if index > 0:
-            return [i for i in range(0, index + 1)]
-        else:
-            return []
-
-    @staticmethod
-    def file_extension_check(path):
-        filename, file_extension = os.path.splitext(path)
-        return StorageType.check_for_known(file_extension)
-
-    @staticmethod
-    def readc3d_general(filename):
-        with open(filename, 'rb') as c3dfile:
-            reader = c3d.Reader(c3dfile)
-            first_frame = reader.first_frame()
-            num_frames = reader.last_frame()-first_frame
-            frames = []
-            analog_labels = [a.strip() for a in reader.analog_labels]
-
-            ret = {'analog_channels_label': analog_labels,
-                   'num_analog_channels': len(analog_labels),
-                   'num_frames': num_frames,
-                   'num_analog_frames': int((num_frames + 1)*(reader.analog_rate/reader.point_rate)),
-                   'point_label': reader.point_labels,
-                   'point_label_expanded': 0,
-                   'num_points': len(reader.point_labels),
-                   'point_rate': reader.point_rate}
-
-            flatten = lambda t: [item for sublist in t for item in sublist]
-            expanded_labels = []
-            if len(ret['point_label']) > 0:
-                expanded_labels = [[label+'_X', label+'_Y', label+'_Z'] for label in reader.point_labels]
-                expanded_labels = flatten(expanded_labels)
-                print()
-
-            if ret['num_analog_channels'] > 0:
-                analog_data = np.zeros([ret['num_analog_frames']+(first_frame+num_frames), ret['num_analog_channels']])
-            else:
-                analog_data = None
-            if ret['num_points'] > 0:
-                point_data = np.zeros([num_frames+first_frame, ret['num_points']*3])
-            else:
-                point_data = None
-
-            for i, points, analog in reader.read_frames():
-                if analog_data is not None:
-                    analog_data[(i-1)*10: ((i-1)*10)+10, :] = analog.transpose()
-                if point_data is not None:
-                    xyz = points[:, :3]
-                    point_data[(i-1), :] = xyz.reshape([1, ret['num_points']*3])
-                frames.append({"id": i, "points": points, "analog": analog})
-            df = pd.DataFrame(data=point_data, columns=expanded_labels)
-            df_analog = pd.DataFrame(data=analog_data, columns=ret['analog_channels_label'])
-            ret['point_data'] = df
-            ret['analog_data'] = df_analog
-            ret['data'] = frames
-        return ret
-
-    @staticmethod
-    def readc3d(filename, exportas_text=False):
-        with open(filename, 'rb') as c3dfile:
-            reader = c3d.Reader(c3dfile)
-            ret = ""
-            markers = {'time': []}
-            count = 0
-            marker_labels = ['time']
-            for pl in reader.point_labels:
-                lb = pl.strip()
-                if len(lb) == 0:
-                    lb = 'M{:03d}'.format(count)
-                    count += 1
-                marker_labels.append(lb)
-                markers[lb] = []
-            analogs = []
-            for i, points, analog in reader.read_frames():
-                analogs.append(analog[:, 0])
-                markers[marker_labels[0]].append((i-1)*(1/reader.point_rate))
-                for j in range(1, len(marker_labels)):
-                    errors = points[j-1, 3:]
-                    p = points[j-1, 0:3]
-                    for e in errors:
-                        if e == -1:
-                            p = np.asarray([np.NaN, np.NaN, np.NaN])
-                            break
-                    markers[marker_labels[j]].append(p)
-                if exportas_text:
-                    ret += 'frame {}: point {}, analog {}'.format(
-                        i, points, analog)
-            box = {'markers': markers, 'mocap': {"rates": reader.point_rate}, 'text': ret, "analog": analogs}
-        return box
-
-    @staticmethod
-    def load(filename, sto_type: StorageType = None):
-        if sto_type is None:
-            sto_type = StorageType.check_for_known(filename)
-        sto = StorageIO()
-        skip_rows = []
-        delimiter = ' '
-        if sto_type == StorageType.nexus:
-            skip_rows = StorageIO.find_nexus_header(filename)
-            delimiter = ','
-        elif sto_type == StorageType.mot:
-            skip_rows = StorageIO.mot_header(filename)
-            delimiter = '\t'
-        elif sto_type == StorageType.csv:
-            delimiter = ','
-        p = pd.read_csv(filename, delimiter=delimiter, skiprows=skip_rows)
-        col = p.columns
-        drops = [c for c in col if 'Unnamed' in c]
-        q = p.drop(columns=drops)
-        sto.buffer.append(q)
-        drops = [c for c in col if 'unix_timestamp_microsec' in c]
-        if len(drops) > 0:
-            r = p.drop(columns=drops)
-            sto.buffer.append(r)
-
-        sto.find_dt()
-        return sto
-
-    def to_csv(self, path):
-        self.data.to_csv(path, index=False)
-
-    def to_yatsdo(self, remove_jitter=True):
-        y = Yatsdo(self.data)
-        if remove_jitter:
-            return y.remove_jitter()
-        return y
-
-    def separate(self, parts, first_col=None):
-        if len(parts) == 0:
-            return {"imu": self.data}
-        if len(parts) == 1:
-            return {parts[0]: self.data}
-        data_headings = self.data.columns
-        separated_part = {}
-        for b in parts:
-            part = []
-            if first_col is not None:
-                part = [first_col]
-            for c in data_headings:
-                if b in c.lower():
-                    part.append(c)
-            separated_part[b] = self.data[part]
-        return separated_part
-
-    def find_dt(self):
-        # a helper function for a special case where get_first column is time
-        df = self.data.to_numpy()
-        df0 = df[:-1, 0]
-        df1 = df[1:, 0]
-        dt = np.round(np.nanmean(df1 - df0), 5)
-        self.info['dt'] = dt
-        return dt
+        super().__init__(store, buffer_size)
 
 
-class BasicVoxelInfo:
-    def __init__(self, slice_thickness=0.625, image_size=[512, 512]):
-        self.slice_thickness = slice_thickness
-        self.image_size = image_size
-        self.padding = 10
-        self.marker_size = 4
+class MYXML(MYXML):
+    # This is a simple xml reader/ writer
+    def __init__(self, filename):
+        super().__init__(filename)
 
 
-class Mesh:
-    @staticmethod
-    def convert_vtp_2_stl(vtp_file, stl_out):
-        reader = vtk.vtkXMLPolyDataReader()
-        reader.SetFileName(vtp_file)
-        reader.Update()
-
-        stl_writer = vtk.vtkSTLWriter()
-        stl_writer.SetFileName(stl_out)
-        stl_writer.SetInputConnection(reader.GetOutputPort())
-        stl_writer.Write()
+class VTKMeshUtl(VTKMeshUtl):
+    def __init__(self):
+        super().__init__()
 
 
-def resample(data, target_freq):
-    yoda = data
-    # type check
-    if isinstance(data, pd.DataFrame) or isinstance(data, np.ndarray):
-        yoda = Yatsdo(data)
-    elif not isinstance(data, Yatsdo):
-        return None
-    start = yoda.x[0]
-    end = yoda.x[-1]
-    cs = np.round((end - start) / (1.0 / target_freq), 5) + 1
-    tp = [np.round(start + c * (1 / target_freq), 5) for c in range(0, int(cs))]
-    d = yoda.get_samples(tp)
-    if isinstance(data, pd.DataFrame):
-        d = pd.DataFrame(data=d, columns=data.columns)
-    elif isinstance(data, Yatsdo):
-        return yoda
-    return d
+class XROMMUtil(XROMMUtil):
+
+    def __init__(self):
+        super().__init__()
 
 
-if __name__ == '__main__':
-    pass
+class Stat(Stat):
+    def __init__(self):
+        super().__init__()
 
+
+class MinionKey(MinionKey):
+    def __init__(self):
+        super().__init__()
+
+
+class Bapple(Bapple):
+    def __init__(self, x: Yatsdo = None, y: Yatsdo = None):
+        """
+        Version 2 of the Bapple (simplified):
+        This Bapple just holds the data, export and import using npz instead of csv
+        Hopefully this is faster
+        :param x: Measurement/ Input data (i.e. IMU) (Type: pandas Dataframe)
+        :param y: Measurement/ Input data (i.e. Target) (Type: pandas Dataframe)
+        """
+        super().__init__(x, y)
+
+
+class JSONSUtl(JSONSUtl):
+    def __init__(self):
+        super().__init__()
+
+class MocapFlags(MocapFlags):
+    def __init__(self):
+        super().__init__()
+
+
+class TRC(TRC):
+    def __init__(self, data, col_names=[], filename="", fill_data=False):
+        super().__init__(data, col_names, filename, fill_data)
