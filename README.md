@@ -1,5 +1,7 @@
 # ptb
-This is the MMG Repository containing useful tools and development of useful tools for analysing, processing and modelling in python (and matlab)
+This is a repository containing useful tools and development of useful tools for analysing, processing and modelling in mostly python (but also matlab)
+
+**Warning: Matlab code is old and no longer being maintained.**
 
 Contributors: Ted Yeung, Isabella Murrell, Homayoon Zarshenas, Thorben Pauli.
 
