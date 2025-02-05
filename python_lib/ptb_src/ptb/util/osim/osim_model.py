@@ -7,6 +7,12 @@ import numpy as np
 import csv
 
 
+"""
+OsimLezer Reads in the Osim file and create a OsimModel obj
+
+"""
+
+
 class OsimTags(Enum):
     OpenSimDocument = "OpenSimDocument"
     Model = "Model"

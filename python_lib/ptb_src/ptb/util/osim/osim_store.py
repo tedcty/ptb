@@ -182,11 +182,11 @@ class OSIMStorageV2(Yatsdo):
                   "version": int(k[1].split('=')[1].strip()),
                   "nRows": int(k[2].split('=')[1].strip()),
                   "nColumns": int(k[3].split('=')[1].strip()),
-                  "inDegrees": OSIMStorage.yes_no_to_true_false(k[4].split('=')[1].strip()),
+                  "inDegrees": OSIMStorageV2.yes_no_to_true_false(k[4].split('=')[1].strip()),
                   "note": "{0}{1}".format(k[6], k[7]),
                   "end": k[9]
                   }
-        ret = OSIMStorage(s.data, filename=filename, header=header)
+        ret = OSIMStorageV2(s.data, filename=filename, header=header)
         return ret
 
     def update(self):
@@ -200,7 +200,7 @@ class OSIMStorageV2(Yatsdo):
             if h not in ['inDegrees']:
                 return "{0}={1}\n".format(h, self.header[h])
             else:
-                return "{0}={1}\n".format(h, OSIMStorage.true_false_to_yes_no(self.header[h]))
+                return "{0}={1}\n".format(h, OSIMStorageV2.true_false_to_yes_no(self.header[h]))
         else:
             return "{0}{1}\n".format('', self.header[h])
 
