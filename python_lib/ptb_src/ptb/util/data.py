@@ -86,11 +86,6 @@ class Yac3do:
         return self.c3d_dict['analog_data']
 
 
-class Yatsdo(Yatsdo):
-    def __init__(self, data, col_names=[], fill_data=False, time_col=0):
-        super().__init__(data, col_names, fill_data, time_col)
-
-
 class Yadict(object):
     # Yet another dictionary
     # provides core set and get dict
@@ -424,10 +419,20 @@ class IMU(Yatsdo):
         p = pd.DataFrame(data=ret, columns=columns)
         p.to_csv(filename, index=False)
 
+"""
+Below are the helper class to provide backward compatibility 
+
+"""
 
 class OSIMStorage(OSIMStorageV2):
     def __init__(self, data, col_names=None, fill_data=False, filename="", header=None, ext=".sto"):
         super().__init__(data, col_names, fill_data, filename, header, ext)
+
+
+class Yatsdo(Yatsdo):
+    def __init__(self, data, col_names=[], fill_data=False, time_col=0):
+        super().__init__(data, col_names, fill_data, time_col)
+        print("This class - {0} - has move to the core package".format(type(self).__name__))
 
 
 class StorageIO(StorageIO):
