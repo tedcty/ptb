@@ -46,7 +46,7 @@ class Config:
 
     @classproperty
     def version(self):
-        return "0.1.29"
+        return "0.1.30"
 
     @classproperty
     def info(self):

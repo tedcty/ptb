@@ -537,6 +537,7 @@ class Analysis:
                 else:
                     kto = kdb.shape[0]-1
                     anchor = kto
+                    valid_kto = []
                     for ax in ar2:
                         if ax < st:
                             continue
@@ -554,13 +555,14 @@ class Analysis:
                         else:
                             if kdb[kto] > kdb[ktop[0]]:
                                 kto = ktop[0]
+                        valid_kto.append(kto)
 
                         # if anchor == kto:
                         #     print(kdb[kton[-1]])
                         #     print(kdb[ktop[0]])
 
-                    ret = h - st + kto
-                    k1 = kto
+                    ret = h - st + valid_kto[0]
+                    k1 = valid_kto[0]
                     heel_strike[keyw].append(ret)
                 print()
                 print((h-st)+k1+frame_number_st)
