@@ -1,6 +1,6 @@
 import numpy as np
 
-from ptb.core.obj import Yatsdo
+from ptb.core import Yatsdo
 
 
 class Stat(object):

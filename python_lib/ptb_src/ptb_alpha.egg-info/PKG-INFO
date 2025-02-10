@@ -1,6 +1,6 @@
 Metadata-Version: 2.2
 Name: ptb_alpha
-Version: 0.1.11
+Version: 0.1.29
 Summary: This is the MMG Repository containing useful tools and development of useful tools for analysing, processing and modelling in python (and matlab)
 Author-email: "Ted Yeung, Thorben Pauli, Isabella Murrell, Homayoon Zarshenas" <tyeu008@aucklanduni.ac.nz>
 Project-URL: Homepage, https://github.com/tedcty/ptb/
@@ -10,8 +10,8 @@ Classifier: Operating System :: OS Independent
 Requires-Python: >=3.9
 Description-Content-Type: text/markdown
 Requires-Dist: pandas
-Requires-Dist: scipy
-Requires-Dist: numpy==1.26.4
+Requires-Dist: scipy<=1.14.1
+Requires-Dist: numpy<=1.26.4
 Requires-Dist: vtk
 Requires-Dist: Pyside6
 Requires-Dist: tsfresh

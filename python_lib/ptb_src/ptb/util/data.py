@@ -1,3 +1,4 @@
+from ptb.core import Yatsdo
 from ptb.util.io.helper import *
 from ptb.util.io.mesh import *
 from ptb.util.io.mocap.file_formats import *

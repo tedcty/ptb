@@ -1,13 +1,13 @@
 README.md
 pyproject.toml
 ptb/__init__.py
-ptb/core/__init__.py
-ptb/core/obj.py
+ptb/core.py
 ptb/ml/__init__.py
 ptb/ml/bayesian.py
 ptb/ml/ml_util.py
 ptb/util/__init__.py
 ptb/util/data.py
+ptb/util/gait.py
 ptb/util/io/__init__.py
 ptb/util/io/helper.py
 ptb/util/io/mesh.py

@@ -2,7 +2,7 @@ import os
 from enum import Enum
 import csv
 
-from ptb.core.obj import Yatsdo
+from ptb.core import Yatsdo
 from ptb.util.io.helper import StorageIO, StorageType
 
 

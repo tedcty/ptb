@@ -13,7 +13,7 @@ import pandas as pd
 from scipy.stats import mode
 from tqdm import tqdm
 
-from ptb.core.obj import Yatsdo
+from ptb.core import Yatsdo
 from ptb.util.io.mocap.file_formats import TRC
 from ptb.util.io.mocap.low_lvl import c3d as c3d
 
@@ -434,7 +434,8 @@ class StorageIO(object):
             if sto_type == StorageType.trc:
                 trc = StorageIO.trc_reader(filename, delimiter=delimiter, fill_data=fill_data)
                 p = trc.to_panda()
-            if sto_type == StorageType.mot or sto_type == StorageType.csv or sto_type == StorageType.captureU:
+            if (sto_type == StorageType.mot or sto_type == StorageType.sto or
+                    sto_type == StorageType.csv or sto_type == StorageType.captureU):
                 p = pd.read_csv(filename, delimiter=delimiter, skiprows=skip_rows)
 
         except pd.errors.ParserError:

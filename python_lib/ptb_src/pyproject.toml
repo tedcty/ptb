@@ -12,14 +12,14 @@ exclude = ["archive*", "resources*"]
 
 [project]
 name = "ptb_alpha"
-version = "0.1.11"
+version = "0.1.29"
 authors = [
   { name="Ted Yeung, Thorben Pauli, Isabella Murrell, Homayoon Zarshenas", email="tyeu008@aucklanduni.ac.nz"},
 ]
 description = "This is the MMG Repository containing useful tools and development of useful tools for analysing, processing and modelling in python (and matlab)"
 readme = "README.md"
 requires-python = ">=3.9"
-dependencies = ['pandas', 'scipy', 'numpy==1.26.4', 'vtk', 'Pyside6', 'tsfresh']
+dependencies = ['pandas', 'scipy<=1.14.1', 'numpy<=1.26.4', 'vtk', 'Pyside6', 'tsfresh']
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",

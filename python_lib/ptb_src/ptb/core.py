@@ -5,12 +5,56 @@ import os
 import time
 import zipfile
 
+
+import importlib.util
+
 import numpy as np
 import pandas as pd
 from scipy import interpolate
 from tqdm import tqdm
 
 from ptb.util.math.filters import Butterworth
+
+class classproperty(object):
+    def __init__(self, getter):
+        self.getter = getter
+
+    def __get__(self, instance, owner):
+        return self.getter(owner)
+
+
+class AdditionalPackages:
+    @staticmethod
+    def install_gias3():
+        pkg_list = {
+            "pydicom:": 'python -m pip install pydicom==2.4.4',
+            "gias3":'python -m pip install gias3',
+            "gias3.musculoskeletal": 'python -m pip install gias3.musculoskeletal',
+            "gias3.io": 'python -m pip install gias3.io',
+            "gias3.mapclientpluginutilities": 'python -m pip install gias3.mapclientpluginutilities',
+            "gias3.visualisation": 'python -m pip install gias3.visualisation',
+            "gias3.applications": 'python -m pip install gias3.applications',
+            "gias3.examples": 'python -m pip install gias3.examples'
+        }
+        for g in pkg_list:
+            if g == 'opensim':
+                if importlib.util.find_spec("opensim") is not None:
+                    continue
+            os.system(pkg_list[g])
+
+class Config:
+
+    @classproperty
+    def version(self):
+        return "0.1.29"
+
+    @classproperty
+    def info(self):
+        print("PTB Version = {0}".format(Config.version))
+        ret = {
+            'version': "{0}".format(Config.version)
+        }
+        return ret
 
 
 class Yatsdo(object):

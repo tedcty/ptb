@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from scipy.spatial.transform import Rotation
 
-from ptb.core.obj import Yatsdo
+from ptb.core import Yatsdo
 from ptb.util.io.mocap.low_lvl import c3d
 
 
