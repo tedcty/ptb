@@ -4,7 +4,7 @@ import math
 import os
 import time
 import zipfile
-
+from enum import Enum
 
 import importlib.util
 
@@ -15,13 +15,23 @@ from tqdm import tqdm
 
 from ptb.util.math.filters import Butterworth
 
-class classproperty(object):
-    def __init__(self, getter):
-        self.getter = getter
 
-    def __get__(self, instance, owner):
-        return self.getter(owner)
+class info(Enum):
+    name = "PTB"
+    version = "0.1.40"
+    all = ""
 
+    def __str__(self):
+        ret = "{0}".format(self.value)
+        if self == info.all:
+            ret = "{0}\nVersion: {1}".format(info.name, info.version)
+        return ret
+
+    @staticmethod
+    def is_version(version: str):
+        if str(info.version) == version:
+            return True
+        return False
 
 class AdditionalPackages:
     @staticmethod
@@ -41,20 +51,6 @@ class AdditionalPackages:
                 if importlib.util.find_spec("opensim") is not None:
                     continue
             os.system(pkg_list[g])
-
-class Config:
-
-    @classproperty
-    def version(self):
-        return "0.1.30"
-
-    @classproperty
-    def info(self):
-        print("PTB Version = {0}".format(Config.version))
-        ret = {
-            'version': "{0}".format(Config.version)
-        }
-        return ret
 
 
 class Yatsdo(object):
