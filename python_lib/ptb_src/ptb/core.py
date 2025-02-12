@@ -18,13 +18,14 @@ from ptb.util.math.filters import Butterworth
 
 class info(Enum):
     name = "PTB"
-    version = "0.1.40"
+    version = "0.1.48"
+    dscr = "\nAuckland Bioengineering Institute's Musculoskeletal Modelling Group\nPresents . . .\nA Python Toolbox\n"
     all = ""
 
     def __str__(self):
         ret = "{0}".format(self.value)
         if self == info.all:
-            ret = "{0}\nVersion: {1}".format(info.name, info.version)
+            ret = "{0}\nVersion: {1}\n{2}".format(info.name, info.version, info.dscr)
         return ret
 
     @staticmethod

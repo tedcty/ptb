@@ -1,6 +1,7 @@
+import copy
 from enum import Enum
-from util.data import Yatsdo
-from util.data import StorageIO
+from ptb.core import Yatsdo
+from ptb.util.data import StorageIO
 import pandas as pd
 import numpy as np
 import math
@@ -16,6 +17,7 @@ from tsfresh.feature_extraction import extract_features
 from tsfresh.feature_extraction import ComprehensiveFCParameters, MinimalFCParameters
 from tsfresh.utilities.dataframe_functions import impute
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.multioutput import MultiOutputRegressor
 from sklearn.feature_selection import RFE, RFECV
 import threading
 
@@ -250,6 +252,69 @@ class MLOperations:
                  "column_sort": 'time',
                  "features": [cl for cl in efx.columns]}
         return efx, param
+
+    @staticmethod
+    def train(efx: pd.DataFrame, y: pd.Series, jobs=None, print_score=False):
+        """
+        Trains a model given features and target values
+        :param efx: the 'x' variable or features used for training
+        :param y: the target value for training (without time column)
+        :param jobs: number of jobs randomforest can use for training
+        :param print_score: print out R^2 to screen
+        :return: Dictionary of the model, feature used and their importance
+        """
+        if jobs is None:
+            reg = RandomForestRegressor()
+        elif isinstance(jobs, int):
+            reg = RandomForestRegressor(n_jobs=jobs)
+        else:
+            print("Error in parameter \'jobs\' - not an int or None.")
+            print("Returning")
+            return None
+        x = efx.to_numpy()
+        y = np.squeeze(y.to_numpy())
+        if len(y.shape) > 1:
+            reg = MultiOutputRegressor(reg)
+
+        reg.fit(x, y)
+
+        fi = pd.Series(reg.feature_importances_, efx.columns)
+        if print_score:
+            print(reg.score(efx, y))
+        feat = [col for col in efx.columns]
+        return {MLKeys.model.name: reg, MLKeys.features.name: {"list": feat, "dict": from_columns(feat)},
+                MLKeys.fc_selected.name: efx, MLKeys.feature_importance.name: fi}
+
+    @staticmethod
+    def ts_selector(x, y:pd.Series):
+        """
+        Selects feature based on the fit of features to y
+
+        > Using the FeatureSelector select the statistical significant features.
+        The check is done by testing the hypothesis
+
+            :math:`H_0` = the Feature is not relevant and can not be added`
+
+                against
+
+            :math:`H_1` = the Feature is relevant and should be kept
+        :param x: features
+        :param y: targets
+        :return: selected features
+        """
+        selector = FeatureSelector()
+        # y.index = x.index  # this is the line in which the issue with the length of y_pick is solved
+        ys = y.to_list()
+        yd = pd.Series(data=ys)
+
+        xs = x.to_numpy()
+        xd = pd.DataFrame(data=xs, columns=[c for c in x.columns])
+        fc_selected = None
+        try:
+            fc_selected = selector.fit_transform(xd, yd)
+        except BufferError:
+            pass
+        return fc_selected
 
     @staticmethod
     def train_model(efx, y):
