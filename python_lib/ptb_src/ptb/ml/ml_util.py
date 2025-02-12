@@ -1,13 +1,18 @@
-import copy
 from enum import Enum
-from ptb.core import Yatsdo
+import multiprocessing
+from typing import List
+
+from scipy import interpolate
+from ptb.util.data import Yatsdo
 from ptb.util.data import StorageIO
+from ptb.ml.tags import MLKeys
 import pandas as pd
 import numpy as np
 import math
 import json
 import pickle
 import os
+from typing import Optional, List, Union
 
 from copy import deepcopy
 from multiprocessing import Process
@@ -21,15 +26,15 @@ from sklearn.multioutput import MultiOutputRegressor
 from sklearn.feature_selection import RFE, RFECV
 import threading
 
-'''
-Authors: Ted Yeung
-Date: Nov 2020
-'''
 
-class WindowPoint(Enum):
-    beginning = 0,
-    middle = 1,
+class WindowFrame(Enum):
+    beginning = 0
+    middle = 1
     end = 3
+    frame = 4
+    time = 5
+    kind = 6
+    size = 7
 
 
 class YatsdoML(Yatsdo):
@@ -46,26 +51,37 @@ class YatsdoML(Yatsdo):
     #
     # functions added:
     # 1) chunk - Chunks data in to specific windows size
-    # 2)
-    def __init__(self, data, col_names=[], window_size=100, offset=100):
+    # 2) and transform chucks to other data object
+    def __init__(self, data, col_names=None, window_size=None, offset=100, do_mag=False):
         """
         :param data: nd.array or pd.DataFrame
         :param window_size: the size of chunk
         :param offset:  the offset between point of interest
         """
+        self.mag_curve = {}
+        if col_names is None:
+            col_names = []
+        if window_size is None:
+            window_size = {WindowFrame.kind: WindowFrame.frame, WindowFrame.size: 100}
         if isinstance(data, str):
             b = StorageIO.load(data)
             if len(col_names) > 0:
-                data = b.data[col_names]
+                data = b.imu[col_names]
             else:
-                data = b.data
+                data = b.imu
         super().__init__(data, col_names)
         self.window_size = window_size
         self.offset = offset
-        self.chunked_list: list[pd.DataFrame] = None
-        self.time_points = []
+        self.chunked_list: Optional[Union[None, List]] = None
+        self.time_points = self.x
         self.last_created_chunks = None
         self.chunked_in_table_form = None
+        if do_mag:
+            self.mag = self.magnitudes_cal()
+            self.x = self.data[:, 0]
+            for i in range(1, self.mag.shape[1]):
+                p = interpolate.InterpolatedUnivariateSpline(self.x, self.mag[:, i])
+                self.mag_curve[i] = p
 
     @property
     def data_ml(self):
@@ -100,7 +116,22 @@ class YatsdoML(Yatsdo):
     def column_names(self, x: list):
         self.column_labels = x
 
-    def basic_chunk(self, window=None, offset=None, place=1):
+    def magnitudes_cal(self):
+        data = self.data[:, 1:]
+        numb = int(np.floor(data.shape[1] / 3))
+        new_data = np.zeros([data.shape[0], numb+1])
+        for i in range(0, data.shape[0]):
+            new_data[i, 0] = self.data[i, 0]
+            for j in range(0, numb):
+                x = [1+j*3, (j+1)*3+1]
+                new_data[i, j+1] = np.linalg.norm(self.data[i, x[0]:x[1]])
+        return new_data
+
+    @property
+    def magnitudes(self):
+        return self.mag
+
+    def basic_chunk(self, window: dict = None, offset=None, place=1):
         """
         This is a basic chunking method where it takes a window size and an offset
         to create the chunk
@@ -110,22 +141,27 @@ class YatsdoML(Yatsdo):
         :return: None
         """
         if window is not None:
-            self.window_size = window
+            window_size = window
+        else:
+            if self.window_size[WindowFrame.kind] == WindowFrame.frame:
+                window_size = self.window_size[WindowFrame.size]
+            elif self.window_size[WindowFrame.kind] == WindowFrame.time:
+                window_size = int(np.floor(self.window_size[WindowFrame.size] / self.dt))
         if offset is not None:
             self.offset = offset
         if self.data is not None:
             chunks = []
-            lots = math.ceil((self.data.shape[0]-self.window_size) / self.offset)
+            lots = math.ceil((self.data.shape[0]-window_size) / self.offset)
             end = int(lots)*self.offset
             idx = 1
             print("Basic Chunk")
-            table = np.zeros([lots*self.window_size, self.data.shape[1]+1])
+            table = np.zeros([lots*window_size, self.data.shape[1]+1])
             for i in range(0, end, self.offset):
-                df = self.data[i: i + self.window_size, :]
+                df = self.data[i: i + window_size, :]
                 new_df = np.zeros([df.shape[0], df.shape[1]+1])
                 new_df[:, 0] = idx*np.ones([1, df.shape[0]])
                 new_df[:, 1:] = deepcopy(df)
-                table[(idx-1)*self.window_size: (idx-1)*self.window_size + self.window_size, :] = new_df
+                table[(idx-1)*window_size: (idx-1)*window_size + window_size, :] = new_df
                 chunks.append(new_df)
                 idx += 1
                 if place == 1:
@@ -140,22 +176,26 @@ class YatsdoML(Yatsdo):
         :param get_first: boolean to indicate if you want the first or second part of the split
         :return: np.ndarray
         """
+        if self.window_size[WindowFrame.kind] == WindowFrame.frame:
+            window_size = self.window_size[WindowFrame.size]
+        elif self.window_size[WindowFrame.kind] == WindowFrame.time:
+            window_size = int(np.floor(self.window_size[WindowFrame.size] / self.dt))
         if get_first:
             end = int(np.round(data_split * len(self.chunked_list), 0))
-            ret = np.zeros([self.window_size * int(np.round(end, 0)), self.data.shape[1] + 1])
+            ret = np.zeros([window_size * int(np.round(end, 0)), self.data.shape[1] + 1])
             for i in range(0, end-1):
                 ds = self.chunked_list[i]
                 ds[:, 0] = ds[:, 0]*(i+1)
-                ret[i*self.window_size:(i+1)*self.window_size, :] = ds
+                ret[i*window_size:(i+1)*window_size, :] = ds
         else:
             end = int(np.round(data_split * len(self.chunked_list), 0))
             siz = int(np.round((1-data_split) * len(self.chunked_list), 0))
-            ret = np.zeros([self.window_size * int(np.round(siz, 0)), self.data.shape[1] + 1])
+            ret = np.zeros([window_size * int(np.round(siz, 0)), self.data.shape[1] + 1])
             for i in range(end, len(self.chunked_list)):
                 j = i-end
                 ds = self.chunked_list[i]
                 ds[:, 0] = ds[:, 0] * (j + 1)
-                ret[j * self.window_size:(j + 1) * self.window_size, :] = ds
+                ret[j * window_size:(j + 1) * window_size, :] = ds
 
         return ret
 
@@ -181,45 +221,46 @@ class YatsdoML(Yatsdo):
         path1 = output_folder+filename+".h5"
         self.chunks_as_dataframe.to_hdf(path1, key=table_id, mode='w')
         chunky_data = {
-            'id': table_id,
-            "offset": self.offset,
-            "window": self.window_size,
-            "timepoints": self.time_points
+            MLKeys.id.name: table_id,
+            MLKeys.offset.name: self.offset,
+            MLKeys.window.name: self.window_size[WindowFrame.size],
+            MLKeys.timepoints.name: self.time_points
         }
         path2 = output_folder + filename + ".json"
         with open(path2, 'w') as outfile:
             json.dump(chunky_data, outfile, sort_keys=True, indent=4)
 
-    def get_samples(self, time_points, as_pandas=False):
+    def get_samples(self, time_points, as_pandas=False, offset_col=True, add_id=False, set_id=1):
         data = super().get_samples(time_points)
         if as_pandas:
-            return pd.DataFrame(data=data, columns=self.column_labels)
+            ret = data
+            col = self.column_labels
+            if offset_col:
+                col = self.column_labels[1:]
+                ret = data[:, 1:]
+            if add_id:
+                ret = np.zeros([data.shape[0], data.shape[1]+1])
+                ret[:, 0] = int(set_id)
+                ret[:, 1:] = data
+                col = [c for c in self.column_labels]
+                col.insert(0, 'id')
+            return pd.DataFrame(data=ret, columns=col)
         return data
 
-
-class MLKeys:
-    """
-    This is a list of common tags
-    """
-    dir_x = 0
-    dir_y = 1
-    x_file = 2
-    y_file = 3
-    y_labels = 4
-    x_labels = 5
-    CFCParameters = 6
-    MFCParameters = 7
-    ModelName = 8
-    AdditionalInfo = 9
-    training = 10
-    validation = 11
-    train_and_validate = 12
+    def get_samples_mag(self, time_points, as_pandas=False, col=None):
+        a = [time_points]
+        for i in range(1, self.mag.shape[1]):
+            a.append(self.mag_curve[i](time_points))
+        data = np.squeeze(np.array(a)).transpose()
+        if as_pandas:
+            return pd.DataFrame(data=data, columns=col)
+        return data
 
 
 class MLOperations:
 
     @staticmethod
-    def extract_features_from_x(x, features=None, fc_parameters=MLKeys.CFCParameters):
+    def extract_features_from_x(x, features=None, fc_parameters=MLKeys.CFCParameters, n_jobs=None):
         """
         The function uses tsfresh to extracts from X
 
@@ -228,30 +269,79 @@ class MLOperations:
         :param fc_parameters: Set fc_parameters ComprehensiveFCParameters or MinimalFCParameters
         :return: extracted features from x
         """
+        if n_jobs is None:
+            n_jobs = multiprocessing.cpu_count()-2
+        print("n_jobs: "+str(n_jobs))
+        n_jobs = int(n_jobs)
+        # We construct a Distributor that will spawn the calculations
+        # over four threads on the local machine
         if features is None:
             if fc_parameters is MLKeys.CFCParameters:
                 efx = extract_features(x,
                                        column_id="id",
                                        column_sort="time",
                                        default_fc_parameters=ComprehensiveFCParameters(),
-                                       impute_function=impute)
+                                       impute_function=impute,
+                                       n_jobs=n_jobs)
             else:
                 efx = extract_features(x,
                                        column_id="id",
                                        column_sort="time",
                                        default_fc_parameters=MinimalFCParameters(),
-                                       impute_function=impute)
+                                       impute_function=impute,
+                                       n_jobs=n_jobs)
         else:
             efx = extract_features(x,
                                    column_id="id",
                                    column_sort="time",
                                    kind_to_fc_parameters=features,
-                                   impute_function=impute)
-        param = {"fc_parameters": fc_parameters,
+                                   impute_function=impute,
+                                   n_jobs=n_jobs)
+        param = {"fc_parameters": fc_parameters.name,
                  "column_id": 'id',
                  "column_sort": 'time',
                  "features": [cl for cl in efx.columns]}
         return efx, param
+
+    @staticmethod
+    def select_and_train_model(efx: pd.DataFrame, y: pd.Series, jobs=None):
+        """
+        Selects feature based on the fit of features to y
+
+        > Using the FeatureSelector select the statistical significant features.
+        The check is done by testing the hypothesis
+
+            :math:`H_0` = the Feature is not relevant and can not be added`
+
+                against
+
+            :math:`H_1` = the Feature is relevant and should be kept
+        > RandomForestRegressor fit to estimate the importance of the each feature
+
+        :param efx: features from x
+        :param jobs:
+        :param y: target (cannot contain time)
+        :return: A dictionary of feature importance and the regressor
+        """
+        if isinstance(y, pd.DataFrame):
+            y = y.iloc[:, 0]
+        print("Feature Selector")
+        selector = FeatureSelector()
+        y.index = efx.index  # this is the line in which the issue with the length of y_pick is solved
+        fc_selected = selector.fit_transform(efx, y)
+        fc_selected_columns = [c for c in fc_selected.columns]
+        if jobs is None:
+            reg = RandomForestRegressor()
+        else:
+            reg = RandomForestRegressor(n_jobs=10)
+        y = y.to_numpy()
+        fc_selected_np = fc_selected.to_numpy()
+        reg.fit(fc_selected_np, y)
+        fi = pd.Series(reg.feature_importances_, fc_selected_columns)
+        print(reg.score(fc_selected_np, y))
+        feat = [col for col in fc_selected.columns]
+        return {MLKeys.model.name: reg, MLKeys.features.name: {"list": feat, "dict": from_columns(feat)},
+                "fc_selected": fc_selected, MLKeys.feature_importance.name: fi}
 
     @staticmethod
     def train(efx: pd.DataFrame, y: pd.Series, jobs=None, print_score=False):
@@ -286,7 +376,7 @@ class MLOperations:
                 MLKeys.fc_selected.name: efx, MLKeys.feature_importance.name: fi}
 
     @staticmethod
-    def ts_selector(x, y:pd.Series):
+    def ts_selector(x, y):
         """
         Selects feature based on the fit of features to y
 
@@ -317,34 +407,10 @@ class MLOperations:
         return fc_selected
 
     @staticmethod
-    def train_model(efx, y):
-        """
-        Selects feature based on the fit of features to y
-
-        > Using the FeatureSelector select the statistical significant features.
-        The check is done by testing the hypothesis
-
-            :math:`H_0` = the Feature is not relevant and can not be added`
-
-                against
-
-            :math:`H_1` = the Feature is relevant and should be kept
-        > RandomForestRegressor fit to estimate the importance of the each feature
-
-        :param efx: features from x
-        :param y: target (cannot contain time)
-        :return: A dictionary of feature importance and the regressor
-        """
-        selector = FeatureSelector()
-        y.index = efx.index  # this is the line in which the issue with the length of y_pick is solved
-        fc_selected = selector.fit_transform(efx, y)
-        reg = RandomForestRegressor()
-        reg.fit(fc_selected, y)
-        fi = pd.Series(reg.feature_importances_, fc_selected.columns)
-        print(reg.score(fc_selected, y))
-        feat = [col for col in fc_selected.columns]
-        return {"model": reg, "features": {"list": feat, "dict": from_columns(feat)},
-                "fc_selected": fc_selected, "feature_importance": fi}
+    def scikit_feature_importance(model, features):
+        fi = pd.Series(model.feature_importances_, features.columns)
+        print(fi.size)
+        return fi
 
     @staticmethod
     def load_json(file):
@@ -408,7 +474,7 @@ class MLOperations:
         count = 1
         for i in efx:
             print(i)
-            selector = FeatureSelector()
+            #selector = FeatureSelector()
             feat = efx[i].to_frame()
             if feat is None:
                 print(".... error None")
@@ -429,10 +495,10 @@ class MLOperations:
                 f_store[i] = {
                     "score": float(sc)
                 }
-
+                # Write out
                 # dic_dump = {
                 #     "name": i,
-                #     "model": reg,
+                #     "full_model": reg,
                 #     "score": sc
                 # }
                 # x = threading.Thread(target=MLOperations.dump, args=(dic_dump, outfolder+"feature_"+str(count),))
@@ -458,8 +524,9 @@ class MLOperations:
         :return: a dictionary of top features.
         """
         most_important = feature_importance.sort_values(ascending=False).head(num_of_feat)
+        print("score: {0}".format(np.sum(most_important)))
         picked_feat = from_columns(most_important.index)
-        return picked_feat
+        return {"pf_dict": picked_feat, "pfx": [idx for idx in most_important.index]}
 
     @staticmethod
     def recursive_feature_elimination(x, y, estimator=RandomForestRegressor(), num_of_feature=7, step=1):
@@ -497,11 +564,14 @@ class MLOperations:
         return selector
 
     @staticmethod
-    def export_features(ef: pd.DataFrame, param, output_folder, filename, table_id):
+    def export_features(ef: pd.DataFrame, param, output_folder, filename, as_csv=False, table_id=None):
         path2 = output_folder + filename + ".json"
         with open(path2, 'w') as outfile:
             json.dump(param, outfile, sort_keys=True, indent=4)
-        ef.to_hdf(output_folder+filename+".h5", table_id)
+        if as_csv:
+            ef.to_csv(output_folder + filename + ".csv", index=False)
+        elif table_id is not None:
+            ef.to_hdf(output_folder+filename+".h5", table_id)
         pass
 
     @staticmethod
@@ -571,7 +641,7 @@ class MLogger:
         :param data: A worker
         :return: result of run
         """
-        return data.run()
+        return data.run_single()
 
 
 if __name__ == '__main__':
@@ -586,3 +656,130 @@ if __name__ == '__main__':
     dx = pd.DataFrame(data=x0)
     dx.to_csv('a.csv', index=False)
     pass
+
+
+class Participant(object):
+    """
+    This is a data holder class to hold information about the location participant's data and key values define in the
+    json file.
+    Currently excludes info such as height and weight.
+    """
+    def __init__(self, label: str, para: dict):
+        self.name = label
+        self.parameter = para
+
+    @property
+    def value(self):
+        return self.parameter
+
+    @property
+    def output_dir(self):
+        return self.parameter['output']
+
+    @property
+    def scale(self):
+        return self.parameter['scale']
+
+    @property
+    def target_keys(self):
+        return self.parameter['target_keys']
+
+    @property
+    def measured(self):
+        return self.parameter["measure"]
+
+    @property
+    def target(self):
+        return self.parameter["target"]
+
+    @property
+    def temp_dir(self):
+        return self.parameter["temp"]
+
+
+class Participants(Participant):
+
+    def __init__(self, label: str, para: dict):
+        super().__init__(label, para)
+
+    @property
+    def measured(self):
+        ret = {}
+        for k in self.parameter:
+            ret[k] = self.parameter[k]["measure"]
+        return ret
+
+    @property
+    def target(self):
+        ret = {}
+        for k in self.parameter:
+            ret[k] = self.parameter[k]["target"]
+        return ret
+
+    @property
+    def channels_name(self):
+        return self.parameter["channels"]
+
+    @property
+    def participants_name(self):
+        return self.parameter["Participants"]
+
+    @property
+    def participants(self):
+        px = self.participants_name
+        ret = []
+        for i in px:
+            ret.append(self.get(i))
+        return ret
+
+    @staticmethod
+    def load(file_path: str):
+        """
+        Loads a list of participants info
+            Example: Json file
+            The first key is the participant id. i.e. P07
+            Each participant have a target(key) and measure(key) file.
+            The trial file need to also include:
+            > output(key) - where to save the file
+            > target_keys(key) - in case you only want a subset
+            > scale(key) - scaling the data to S.I. units and radians
+
+                {
+                    "P07" : {"target": "F:/Data/yatpkg_src/resources/ML_pipe/target/P07-IMU_walk02_ik.mot",
+                             "measure": "F:/Data/yatpkg_src/resources/ML_pipe/measured/P07- ProcessedIMUWalk02.mot"
+                           },
+                    "P08" : {"target": "F:/Data/yatpkg_src/resources/ML_pipe/target/P08-WalkIKResults.mot",
+                           "measure": "F:/Data/yatpkg_src/resources/ML_pipe/measured/P08-ProcessedIMUWalk03.mot"
+                           },
+                    "P09" : {"target": "F:/Data/yatpkg_src/resources/ML_pipe/target/P09-IMU_walk2_ik.mot",
+                           "measure": "F:/Data/yatpkg_src/resources/ML_pipe/measured/P09-ProcessedIMUWalk02.mot"
+                           },
+                    "output": "F:/Data/yatpkg_src/resources/ML_pipe/data",
+                    "target_keys": ["time", "knee_angle_r"],
+                    "scale": [0.001, 0.001, 0.001, 0.017453292519943295, 0.017453292519943295, 0.017453292519943295]
+                }
+        :param file_path: path to the file with the list of trials
+        :return a Participants object
+        """
+        try:
+            with open(file_path) as json_file:
+                trial_files = json.load(json_file)
+        except FileNotFoundError:
+            trial_files = None
+        if trial_files is not None:
+            return Participants("Participants", trial_files)
+        else:
+            return None
+
+    def get(self, label: str):
+        """
+        From Participants return a trial
+        :param label:
+        :return:
+        """
+        d = self.parameter[label]
+        d["output"] = self.parameter['output']+'/'+label + '/'
+        d["target_keys"] = self.parameter['target_keys']
+        d["scale"] = self.parameter['scale']
+        d["temp"] = self.parameter['temp']
+        return Participant(label, d)
