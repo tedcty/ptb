@@ -1,4 +1,4 @@
-# ptb
+# ptb a MMG Repository of useful tools
 This is a repository containing useful tools and development of useful tools for analysing, processing and modelling in mostly python (but also matlab)
 
 **Warning: Matlab code is old and no longer being maintained.**
