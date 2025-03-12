@@ -1,8 +1,11 @@
 # coding=utf-8
+import os
 from enum import Enum
 import xml.sax
 from xml.dom.minidom import parse, Node
 import xml.dom.minidom
+
+import matplotlib.pyplot as plt
 import numpy as np
 import csv
 import opensim as om
@@ -11,6 +14,10 @@ from opensim import InverseKinematicsTool
 from ptb.util.io.helper import StorageIO, StorageType, MYXML
 from ptb.util.io.mocap.file_formats import TRC
 from ptb.util.math.filters import Butterworth
+from ptb.util.math.transformation import Cloud
+from scipy import interpolate
+from scipy.signal import find_peaks
+
 
 class OsimModel:
     def __init__(self, filepath):
@@ -192,6 +199,8 @@ class IK:
                      mode=0):
         if mode == 0:
             IK.run_from_c3d_0(wkdir, trial_c3d, template)
+        elif mode == 1:
+            IK.run_from_c3d_1(wkdir, trial_c3d, template)
 
     @staticmethod
     def run_from_c3d_0(wkdir="M:/test/",
@@ -204,6 +213,247 @@ class IK:
         trc.z_up_to_y_up()
         trc.write("{0}{1}.trc".format(wkdir, trc_name))
         ik = InverseKinematicsTool(template)
+        b = ik.get_output_motion_file()
+        bf = "{0}/{1}.sto".format(b[:b.rindex("/")], trc_name)
+        ik.set_output_motion_file(bf)
+
+        x = trc.data[:, 1]
+        ik.setStartTime(x[0])
+        ik.setEndTime(x[-1])
+
+        try:
+            ik.run()
+        except RuntimeError:
+            pass
+        pass
+
+    @staticmethod
+    def run_from_c3d_1(wkdir="M:/test/",
+                       trial_c3d="Straight normal 1.c3d",
+                       template='M:/template/Straight normal 1.xml',
+                       model=""):
+
+        # read task
+        trc_name = trial_c3d[:trial_c3d.rindex('.c3d')]
+        c3d_file = "{0}{1}".format(wkdir, trial_c3d)
+        trc = TRC.create_from_c3d(c3d_file)
+        trc.z_up_to_y_up()
+        # trc.fill_gaps()
+        segments = {'l_forearm': ["L_Med_HumEpicondyle", "L_Lat_HumEpicondyle", "L_Ulna", "L_Radius"],
+                    'l_upperarm': ["L_Med_HumEpicondyle", "L_Lat_HumEpicondyle", 'L_Acromion'],
+                    'r_forearm': ["R_Med_HumEpicondyle", "R_Lat_HumEpicondyle", "R_Ulna", "R_Radius"],
+                    'r_upperarm': ["R_Med_HumEpicondyle", "R_Lat_HumEpicondyle", 'R_Acromion'],
+                    'torso': ['Sternum', 'R_Acromion', 'L_Acromion'],
+                    'pelvis': ['R_ASIS', 'L_ASIS', 'R_PSIS', 'L_PSIS'],
+                    'l_shank': ['L_LatKnee', 'L_MedKnee', 'L_FibHead', 'L_MidShank', 'L_LatAnkle', 'L_MedAnkle'],
+                    'r_shank': ['R_LatKnee', 'R_MedKnee', 'R_FibHead', 'R_MidShank', 'R_LatAnkle', 'R_MedAnkle'],
+                    'l_foot': ['L_LatAnkle', 'L_MedAnkle', "L_DP1", "L_MT2", "L_MT5", "L_Heel"],
+                    'r_foot': ['R_LatAnkle', 'R_MedAnkle', "R_DP1", "R_MT2", "R_MT5", "R_Heel"]
+                    }
+
+        segments_ref = {}
+        count = 0
+        for i in range(0, trc.data.shape[0]):
+            for s in segments:
+                try:
+                    a = segments_ref[s]
+                except KeyError:
+                    if s == 'r_forearm':
+                        pass
+                    matr0 = np.zeros([3, len(segments[s])])
+                    boo = False
+                    for m in range(0, len(segments[s])):
+                        c = trc.marker_set[segments[s][m]].iloc[i, :].to_list()
+                        if np.sum(np.isnan(c)) > 0:
+                            boo = False
+                            break
+                        matr0[:, m] = c
+                        boo = True
+                    if boo:
+                        segments_ref[s] = matr0
+        segments_ref_dis = {}
+        for s in segments_ref:
+            pos = []
+            seg_dis = {}
+            for m in segments_ref[s]:
+                pos.append(m)
+            pos_mat = (np.asarray(pos)).T
+            avg = np.mean(pos_mat, axis=0)
+            seg_dis['centre'] = avg
+
+            for m in range(0, len(segments[s])):
+                seg_dis[segments[s][m]] = np.linalg.norm(segments_ref[s][:, m] - avg)
+            segments_ref_dis[s] = seg_dis
+            pass
+
+        marker_acc = {}
+        marker_sig = {}
+        marker_sig_peaks = {}
+        for m in trc.marker_set:
+            print(m)
+            marker = trc.marker_set[m].to_numpy()
+            marker_dt = marker[1:, :] - marker[:-1]
+            marker_dt = np.array([np.linalg.norm(marker_dt[i, :]) for i in range(0, marker_dt.shape[0])])
+            marker_dtp = marker_dt[1:] - marker_dt[:-1]
+            acc = np.squeeze(np.zeros([1, marker.shape[0]]))
+            acc[2:] = marker_dtp
+
+            accsq = np.array([acc[i] * acc[i] for i in range(0, len(acc))])
+            meana = np.sqrt(np.nanmean(accsq))
+            med = np.sqrt(np.nanmedian(accsq))
+            stda = np.nanstd(accsq)
+            mx = np.nanmax(accsq)
+            u = meana / stda
+            v = (mx - (3 * stda)) / u
+            score = np.abs(v) / 1e5
+            print(np.abs(v) / 1e5)
+            if score > 1:
+                ar, _ = find_peaks(accsq, height=mx * 0.8)
+                marker_sig_peaks[m] = ar
+                marker_acc[m] = acc
+            # plt.figure()
+            # x = np.array([i for i in range(0, acc.shape[0])])
+            # plt.title(m)
+            # plt.plot(acc)
+            # plt.plot(x[ar], acc[ar], 'x')
+            # plt.show()
+
+        def get_segment(m):
+            for j in segments:
+                if m in segments[j]:
+                    return j
+
+        unlabelled = [m for m in trc.marker_set if m.startswith('*')]
+        for m in marker_sig_peaks:
+            print(m)
+            c = marker_sig_peaks[m]
+            seg = get_segment(m)
+            for f in c:
+                frame = f
+                possibles = []
+                for n in marker_sig_peaks:
+                    d = marker_sig_peaks[n]
+                    for o in d:
+                        if o == frame:
+                            possibles.append(n)
+                            break
+                pos = (trc.marker_set[m].to_numpy())[frame, :]
+                pos_prev = (trc.marker_set[m].to_numpy())[frame - 1, :]
+                possib = {}
+                possib_diff = {}
+                b = ""
+                bb = 100000
+                for p in possibles:
+                    pos_dt = (trc.marker_set[p].to_numpy())[frame, :]
+                    possib[p] = pos_dt
+                    possib_diff[p] = np.linalg.norm(pos_dt - pos_prev)
+                    if bb > possib_diff[p]:
+                        b = p
+                        bb = possib_diff[p]
+                    pass
+                unlabelled_possib_diff = {}
+                ubb = 100000
+                ub = ""
+                unlabelled_possib = {}
+                for u in unlabelled:
+                    pos_dt = (trc.marker_set[u].to_numpy())[frame, :]
+                    unlabelled_possib[u] = pos_dt
+                    if np.sum(np.isnan(pos_dt)) > 0:
+                        continue
+                    unlabelled_possib_diff[u] = np.linalg.norm(pos_dt - pos_prev)
+                    if ubb > unlabelled_possib_diff[u]:
+                        ub = u
+                        ubb = unlabelled_possib_diff[u]
+                if ubb > bb:
+                    if bb < 30:
+                        trc.marker_set[b].iloc[frame, :] = pos
+                        trc.marker_set[m].iloc[frame, :] = possib[b]
+                else:
+                    if ubb < 30:
+                        trc.marker_set[ub].iloc[frame, :] = pos
+                        trc.marker_set[m].iloc[frame, :] = unlabelled_possib[ub]
+
+                pass
+
+            pass
+        segments_ref = {}
+        count = 0
+        for i in range(0, trc.data.shape[0]):
+            for s in segments:
+                try:
+                    a = segments_ref[s]
+                except KeyError:
+                    if s == 'r_forearm':
+                        pass
+                    matr0 = np.zeros([3, len(segments[s])])
+                    boo = False
+                    for m in range(0, len(segments[s])):
+                        c = trc.marker_set[segments[s][m]].iloc[i, :].to_list()
+                        if np.sum(np.isnan(c)) > 0:
+                            boo = False
+                            break
+                        matr0[:, m] = c
+                        boo = True
+                    if boo:
+                        segments_ref[s] = matr0
+
+        # for i in range(0, trc.data.shape[0]):
+        #     for s in segments:
+        #         matr0 = segments_ref[s]
+        #         matr1 = []
+        #         matr2 = []
+        #         indexs = []
+        #         indexs_ab = []
+        #         for m in range(0, len(segments[s])):
+        #             c = trc.marker_set[segments[s][m]].iloc[i, :].to_list()
+        #             if np.sum(np.isnan(c)) > 0:
+        #                 indexs_ab.append(m)
+        #                 continue
+        #             matr1.append(matr0[:, m])
+        #             matr2.append(c)
+        #             indexs.append(m)
+        #             pass
+        #
+        #
+        #         if len(matr2) != len(segments[s]):
+        #             if len(matr2) >= 3:
+        #                 matr_np = (np.array(matr1)).T
+        #                 matr2_np = (np.array(matr2)).T
+        #                 matr_ones = np.ones([4, len(segments[s])])
+        #                 matr_ones[:3, :] = matr0
+        #                 t = Cloud.rigid_body_transform(matr_np, matr2_np)
+        #                 test = np.matmul(t, matr_ones)
+        #                 matr3 = test[:3, :]
+        #                 for h in range(0, len(indexs)):
+        #                     matr3[:, indexs[h]] = matr2_np[:, h]
+        #                 for m in range(0, len(segments[s])):
+        #                     k = np.nanmean([matr3[:, m], trc.marker_set[segments[s][m]].iloc[i, :]], axis=0)
+        #                     trc.marker_set[segments[s][m]].iloc[i, :] = k
+        #                 pass
+        #         pass
+        #
+        #
+        #     pass
+        cols = [c for c in range(0, len(trc.column_labels)) if '*' not in trc.column_labels[c]]
+        data = trc.data[:, cols]
+        trc.data = data
+        # for m in trc.marker_set:
+        #     marker = trc.marker_set[m].to_numpy()
+        #     marker_dt0 = []
+        #     for i in range(0, 3):
+        #         marker_dt0.append(Butterworth.butter_low_filter(marker[:, i], 6, 100))
+        #     r = (np.array(marker_dt0)).T
+        #     trc.marker_set[m].iloc[:, :] = r
+        #
+        trc.update_from_markerset()
+        trc.headers['Units'] = 'mm'
+        trial = "{0}{1}_ex.trc".format(wkdir, trc_name)
+        trc.write(trial)
+        output_motion_file = "{0}{1}.sto".format(wkdir, trc_name)
+        save_name = "{0}{1}_ik_setup.xml".format(wkdir, trc_name)
+        IK.write_ik_setup(trial, template, model, output_motion_file, save_name)
+        os.listdir()
+        ik = InverseKinematicsTool(save_name)
         b = ik.get_output_motion_file()
         bf = "{0}/{1}.sto".format(b[:b.rindex("/")], trc_name)
         ik.set_output_motion_file(bf)
