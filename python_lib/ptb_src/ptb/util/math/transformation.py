@@ -8,6 +8,7 @@ from PIL import Image, ImageDraw
 from scipy.spatial.transform import Rotation as R
 from sklearn.decomposition import PCA
 from ptb.util.io.helper import StorageIO, BasicVoxelInfo
+from scipy.optimize import minimize
 
 '''
 Authors: Ted Yeung and Thorben Pauli
