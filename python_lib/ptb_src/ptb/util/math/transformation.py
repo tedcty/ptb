@@ -422,7 +422,35 @@ class Trig:
 
 class Cloud(object):
     @staticmethod
-    def sphere_fit(points):
+    def fit_sphere_to_points_opt(points):
+        """
+        Author: Harnoor Saini
+        :param points:
+        :return:
+        """
+
+        def cost_function(params):
+            x0, y0, z0, r = params
+            residuals = np.sqrt(((points - np.array([x0, y0, z0])) ** 2).sum(axis=1)) - r
+            return (residuals ** 2).sum()
+
+        centroid = points.mean(axis=0)
+        initial_radius_guess = np.mean(np.sqrt(((points - centroid) ** 2).sum(axis=1)))
+        initial_guess = [*centroid, initial_radius_guess]
+
+        result = minimize(cost_function, initial_guess, method='Powell')
+        if result.success:
+            return result.x[:3], result.x[3]
+        else:
+            raise RuntimeError("Sphere fitting did not converge")
+
+    @staticmethod
+    def fit_sphere_to_points_reg(points):
+        """
+           Algorithm from https://www.jpe-innovations.com/precision-point/fit-sphere-through-points/
+           :param points: ndarray that is n x 3
+           :return: center of the points
+        """
         p_mean = np.nanmean(points, axis=0)
         n = points.shape[0]
         a = np.eye(3)
@@ -431,18 +459,32 @@ class Cloud(object):
             a[i, 1] = np.nansum([(points[x, i] * (points[x, 1] - p_mean[1])) / n for x in range(0, n)])
             a[i, 2] = np.nansum([(points[x, i] * (points[x, 2] - p_mean[2])) / n for x in range(0, n)])
         a: np.ndarray = 2 * a
-        b: np.ndarray = np.atleast_2d([[0], [0], [0]])
-        b[0, 0] = np.nansum(
-            [((points[x, 0] ** 2 + points[x, 1] ** 2 + points[x, 2] ** 2) * (points[x, 0] - p_mean[0])) / n for x in
-             range(0, n)])
-        b[0, 1] = np.nansum(
-            [((points[x, 0] ** 2 + points[x, 1] ** 2 + points[x, 2] ** 2) * (points[x, 1] - p_mean[1])) / n for x in
-             range(0, n)])
-        b[0, 2] = np.nansum(
-            [((points[x, 0] ** 2 + points[x, 1] ** 2 + points[x, 2] ** 2) * (points[x, 2] - p_mean[2])) / n for x in
-             range(0, n)])
+        b: np.ndarray = np.atleast_2d([[0.0], [0.0], [0.0]])
+        xc = np.array([points[x, 0] ** 2 for x in range(0, n)])
+        yc = np.array([points[x, 1] ** 2 for x in range(0, n)])
+        zc = np.array([points[x, 2] ** 2 for x in range(0, n)])
+        sum_axis = xc + yc + zc
+        xb = sum_axis * (np.transpose(points[:, 0]) - p_mean[0]) / n
+        yb = sum_axis * (np.transpose(points[:, 1]) - p_mean[1]) / n
+        zb = sum_axis * (np.transpose(points[:, 2]) - p_mean[2]) / n
+
+        b[0, 0] = np.sum(xb)
+        b[1, 0] = np.sum(yb)
+        b[2, 0] = np.sum(zb)
         c = np.matmul(np.linalg.inv(np.matmul(a.transpose(), a)), np.matmul(a.transpose(), b))
         return c
+
+    @staticmethod
+    def sphere_fit(points, algo='regression'):
+        """
+        :param points: ndarray that is n x 3
+        :param algo: str either 'regression' or 'Optimisation'
+        :return: center of the points
+        """
+        if algo == 'regression':
+            return Cloud.fit_sphere_to_points_reg(points)
+        else:
+            return Cloud.fit_sphere_to_points_opt(points)
 
     @staticmethod
     def transform_between_3x3_points_sets(source, target, rowpoints: bool = False, result_as_4x4: bool = True):
