@@ -290,14 +290,14 @@ class TRC(Yatsdo):
             n += 3
         self.update()
 
-    def update_from_markerset(self):
+    def update_from_markerset(self, reset_units=False):
         offset = 2
         n = 0
         ms = []
         a = 0
         num_markers = len(self.marker_set.keys())
         temp = np.zeros([self.data.shape[0], 3*num_markers+2])
-        temp[:, :self.data.shape[1]] = self.data
+        temp[:, :2] = self.data[:, :2]
         for m in self.marker_set:
             k = self.marker_set[m]
             j = k.to_numpy()
@@ -311,7 +311,8 @@ class TRC(Yatsdo):
             a += 1
             ms.append(m)
         self.data = temp
-        self.headers[MocapFlags.Units.value] = "m"
+        if reset_units:
+            self.headers[MocapFlags.Units.value] = "m"
         self.headers[MocapFlags.NumFrames.value] = 1
         self.headers[MocapFlags.OrigNumFrames.value] = 1
         self.headers[MocapFlags.NumMarkers.value] = len(ms)
