@@ -488,6 +488,54 @@ class Cloud(object):
             return Cloud.fit_sphere_to_points_opt(points)
 
     @staticmethod
+    def rigid_transform_svd(A, B):
+        """
+        Calculates the rigid-body transformation (rotation and translation)
+        between two point clouds A and B using Singular Value Decomposition (SVD).
+
+        Args:
+            A (numpy.ndarray): Nx3 matrix representing the source point cloud.
+            B (numpy.ndarray): Nx3 matrix representing the target point cloud.
+
+        Returns:
+            tuple: A tuple containing the rotation matrix (R) and translation vector (t).
+        """
+
+        assert A.shape == B.shape
+
+        num_points = A.shape[0]
+
+        # Calculate centroids
+        centroid_A = np.mean(A, axis=0)
+        centroid_B = np.mean(B, axis=0)
+
+        # Center the point clouds
+        AA = A - centroid_A
+        BB = B - centroid_B
+
+        # Calculate the covariance matrix
+        H = np.dot(AA.T, BB)
+
+        # Perform SVD
+        U, S, Vt = np.linalg.svd(H)
+
+        # Calculate the rotation matrix
+        R = np.dot(Vt.T, U.T)
+
+        # Special reflection case
+        if np.linalg.det(R) < 0:
+            print("Reflection detected")
+            Vt[2, :] *= -1
+            R = np.dot(Vt.T, U.T)
+
+        # Calculate the translation vector
+        t = centroid_B - np.dot(R, centroid_A)
+        M = np.eye(4)
+        M[:3, :3] = R
+        M[:3, 3] = t
+        return R, t, M
+
+    @staticmethod
     def transform_between_3x3_points_sets(source, target, rowpoints: bool = False, result_as_4x4: bool = True):
         if rowpoints:
             src = source.T
