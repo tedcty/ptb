@@ -475,3 +475,58 @@ class MocapFlags(Enum):
         return [k for k in MocapFlags if isinstance(k.value, str) if k.value != 'mm' or k.value != 'm']
 
 
+
+class ForcePlate(Yatsdo):
+    def __init__(self, data, col_names=None):
+        super().__init__(data, col_names)
+        self.corners = None
+        self.origin_offset = None
+        self.num_of_plates = -1
+        self.plate = {}
+
+    @staticmethod
+    def create(param, data):
+        f = ForcePlate(data)
+        f.corners = param["corners"]
+        f.origin_offset = param["origin"]
+        f.num_of_plates = param["num_plates"]
+        f.sort_plates()
+        f.cop()
+        return f
+
+    def sort_plates(self):
+        mapper = pd.DataFrame(data=self.data, columns=self.col_labels)
+        for i in range(1, self.num_of_plates+1):
+            cols = self.col_labels[:3]
+            cols.append("Force.Fx{0}".format(i))
+            cols.append("Force.Fy{0}".format(i))
+            cols.append("Force.Fz{0}".format(i))
+            cols.append("Moment.Mx{0}".format(i))
+            cols.append("Moment.My{0}".format(i))
+            cols.append("Moment.Mz{0}".format(i))
+            self.plate["force_plate_{0}".format(i)] = [i, mapper[cols]]
+        pass
+
+    def cop(self):
+        for p in self.plate:
+            data = self.plate[p][1]
+            idx = self.plate[p][0]
+
+            data_col = [c for c in data.columns]
+            data_col.append("COP.Px{0}".format(idx))
+            data_col.append("COP.Py{0}".format(idx))
+            data_col.append("COP.Pz{0}".format(idx))
+            data_w_cop = np.zeros([data.shape[0], data.shape[1]+3])
+            data_w_cop[:, :-3] = data
+            cop = np.zeros([self.data.shape[0], 3])
+            My = data["Moment.My{0}".format(idx)].to_numpy()
+            Mx = data["Moment.Mx{0}".format(idx)].to_numpy()
+            Fz = data["Force.Fz{0}".format(idx)].to_numpy()
+            for i in range(0, self.data.shape[0]):
+                ax = -My[i] / Fz[i]
+                ay = -Mx[i] / Fz[i]
+                cop[i, :] = np.array([ax, ay, 0]) + self.origin_offset[idx-1]
+                pass
+            data_w_cop[:, data.shape[1]:] = cop
+            self.plate[p] = [idx, pd.DataFrame(data=data_w_cop, columns=data_col)]
+            pass

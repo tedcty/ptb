@@ -38,6 +38,37 @@ def milli():
     milliseconds = round(seconds * 1000)
     return milliseconds
 
+class MocapDO:
+    def __init__(self):
+        self.__raw__ = None
+        self.markers = None
+        self.force_plates = None
+        self.emg = None
+        self.imu = None
+        self.other_analog = None
+
+    @staticmethod
+    def create_from_c3d(file):
+        sg = StorageIO.readc3d_general(file)
+        s = StorageIO.simple_readc3d(file)
+        m = MocapDO()
+        m.markers = TRC.create_from_c3d_dict(s, file)
+        paramF = {'corners': sg['force_plate_corners'],
+                  'origin': sg['force_plate_origins_from_corner'],
+                  'num_plates': sg['number_of_force_plates']
+                  }
+        ad = sg["analog_data"]
+        ad_col = [c for c in ad.columns if 'Force' in c or 'Moment' in c or 'frame' in c]
+        ad_col.insert(0,'time')
+        ad_force = sg["analog_data"][ad_col[1:]]
+        p = np.zeros([ad_force.shape[0], ad_force.shape[1]+1])
+        p[:, 0] = [i*(1/sg['analog_rate']) for i in range(ad_force.shape[0])]
+        p[:, 1:] = ad_force.to_numpy()
+        force_data = pd.DataFrame(data=p, columns=ad_col)
+        f = ForcePlate.create(paramF, force_data)
+        m.force_plates = f
+        return m
+
 
 class Yac3do:
     # Yet another c3d data object

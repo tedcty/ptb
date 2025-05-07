@@ -294,25 +294,67 @@ class StorageIO(object):
             first_frame = reader.first_frame()
             units = reader.groups.get('POINT').get('UNITS').bytes.decode("utf-8")
             subject_ = reader.groups.get('SUBJECTS')
-            subject = {'name': subject_.params['NAMES'].bytes.decode("utf-8").strip(),
-                       'marker_sets': subject_.params['MARKER_SETS'].bytes.decode("utf-8").strip(),
-                       'is_static': int.from_bytes(subject_.params['IS_STATIC'].bytes, 'little')}
+            if subject_ is None:
+                subject = {'name': "",
+                           'marker_sets': "",
+                           'is_static': ""}
+            else:
+                subject = {'name': subject_.params['NAMES'].bytes.decode("utf-8").strip(),
+                           'marker_sets': subject_.params['MARKER_SETS'].bytes.decode("utf-8").strip(),
+                           'is_static': int.from_bytes(subject_.params['IS_STATIC'].bytes, 'little')}
             trial_ = reader.groups.get('TRIAL')
             t0 = int.from_bytes(trial_.params['ACTUAL_START_FIELD'].bytes, 'little')
             t1 = int.from_bytes(trial_.params['ACTUAL_END_FIELD'].bytes, 'little')
-            trial = {'camera_rate': struct.unpack('f', trial_.params['CAMERA_RATE'].bytes)[0],
+            ccr = None
+            try:
+                cam_rate = trial_.params['CAMERA_RATE'].bytes
+
+                ccr = struct.unpack('f', cam_rate)[0]
+            except KeyError:
+                pass
+            trial = {'camera_rate': ccr,
                      'start_frame': t0,
                      'end_frame': t1}
-            num_frames = reader.last_frame()-first_frame
+            num_frames = reader.last_frame() - first_frame
             frames = []
-            analog_labels = [a.strip() for a in reader.analog_labels]
+            fp_ = reader.groups.get('FORCE_PLATFORM')
+            used_byte = fp_.params['USED'].bytes
+            used = (np.frombuffer(used_byte, dtype=np.int16))[0]
+            channel = fp_.params['CHANNEL'].int16_array
+            origin = fp_.params['ORIGIN'].float_array
+            corners = fp_.params['CORNERS'].float_array
+            corners_dimension = fp_.params['CORNERS'].dimensions
+            corners2 = fp_.params['CORNERS'].bytes
+            corners2_bytes_per_float = fp_.params['CORNERS'].bytes_per_element
+            if corners2_bytes_per_float == 4:
+                dtyp = np.float32
+            else:
+                dtyp = np.float64
+            corners2_float_array = np.frombuffer(corners2, dtype=dtyp)
+            corners2_float_array = np.squeeze(corners2_float_array)
+
+            c_fp = np.reshape(corners2_float_array, corners_dimension, order='F')
+            force_plate_corners = {'force_plate_{0}'.format(i + 1): c_fp[:, :, i] for i in range(0, used)}
+            origins = []
+            for i in force_plate_corners:
+                origins.append(np.mean(force_plate_corners[i], axis=1))
+            try:
+                analog_labels = [a.strip() for a in reader.analog_labels]
+            except AttributeError:
+                analog_labels = []
             point_labels = [a.strip() for a in reader.point_labels]
-            rate_diff = int(reader.analog_rate/reader.point_rate)
+            rate_diff = int(reader.analog_rate / reader.point_rate)
             ret = {'analog_channels_label': analog_labels,
+                   'number_of_force_plates': used,
+                   'force_plate_corners': force_plate_corners,
+                   'force_plate_corners_np': corners,
+                   'force_plate_origins_from_corner': origins,
+                   'force_plate_origins': origin,
+                   'force_plate_channels': channel,
                    'num_analog_channels': len(analog_labels),
                    'num_frames': num_frames,
                    'first_frame': first_frame,
-                   'num_analog_frames': int((num_frames + 1)*rate_diff),
+                   'num_analog_frames': int((num_frames + 1) * rate_diff),
                    'rate-diff(A2M)': rate_diff,
                    'point_label': point_labels,
                    'point_label_expanded': 0,
@@ -329,29 +371,30 @@ class StorageIO(object):
             flatten = lambda t: [item for sublist in t for item in sublist]
             expanded_labels = []
             if len(ret['point_label']) > 0:
-                expanded_labels = [[label+'_X', label+'_Y', label+'_Z'] for label in point_labels]
+                expanded_labels = [[label + '_X', label + '_Y', label + '_Z'] for label in point_labels]
                 expanded_labels = flatten(expanded_labels)
 
             if ret['num_analog_channels'] > 0:
-                analog_data = np.zeros([(first_frame+num_frames)*int(rate_diff), ret['num_analog_channels'] + 2])
+                analog_data = np.zeros([(first_frame + num_frames) * int(rate_diff), ret['num_analog_channels'] + 2])
             else:
                 analog_data = None
             if ret['num_points'] > 0:
-                point_data = np.zeros([num_frames+first_frame, ret['num_points']*3])
+                point_data = np.zeros([num_frames + first_frame, ret['num_points'] * 3])
             else:
                 point_data = None
 
             for i, points, analog in reader.read_frames():
                 if analog_data is not None:
                     try:
-                        analog_data[(i-1)*rate_diff: ((i-1)*rate_diff)+rate_diff, 2:] = analog.transpose()
+                        analog_data[(i - 1) * rate_diff: ((i - 1) * rate_diff) + rate_diff, 2:] = analog.transpose()
                     except ValueError:
                         analog_data[(i - 1) * rate_diff: ((i - 1) * rate_diff) + rate_diff, 2:] = analog
-                        analog_data[(i - 1) * rate_diff: ((i - 1) * rate_diff) + rate_diff, 1] = [j for j in range(0, rate_diff)]
+                        analog_data[(i - 1) * rate_diff: ((i - 1) * rate_diff) + rate_diff, 1] = [j for j in
+                                                                                                  range(0, rate_diff)]
                         analog_data[(i - 1) * rate_diff: ((i - 1) * rate_diff) + rate_diff, 0] = i
                 if point_data is not None:
                     xyz = points[:, :3]
-                    point_data[(i-1), :] = xyz.reshape([1, ret['num_points']*3])
+                    point_data[(i - 1), :] = xyz.reshape([1, ret['num_points'] * 3])
                 frames.append({"id": i, "points": points, "analog": analog})
             df = pd.DataFrame(data=point_data, columns=expanded_labels)
             cols_analog = ["mocap-frame", "sub-frame"]
@@ -388,19 +431,25 @@ class StorageIO(object):
                         # This contains more than 1 frame as there is usually 5 frames per 1 frame of point data if
                         # data OMC is recorded at 200 Hz and analog data recorded at 1000 Hz
                         analogs.append(analog_temp)
-                markers[marker_labels[0]].append((i-1)*(1/reader.point_rate))
+                markers[marker_labels[0]].append((i - 1) * (1 / reader.point_rate))
                 for j in range(1, len(marker_labels)):
-                    errors = points[j-1, 3:]
-                    p = points[j-1, 0:3]
+                    errors = points[j - 1, 3:]
+                    p = points[j - 1, 0:3]
                     for e in errors:
                         if e == -1:
-                            p = np.asarray([np.NaN, np.NaN, np.NaN])
+                            version = np.__version__.split('.')
+                            if len(version) == 3:
+                                if int(version[0].strip()) < 2:
+                                    p = np.asarray([np.NaN, np.NaN, np.NaN])
+                                else:
+                                    p = np.asarray([np.nan, np.nan, np.nan])
                             break
                     markers[marker_labels[j]].append(p)
                 if exportas_text:
                     ret += 'frame {}: point {}, analog {}'.format(
                         i, points, analog)
-            box = {'markers': markers, 'mocap': {"rates": reader.point_rate, "units": units, "header": reader.header}, 'text': ret, "analog": analogs}
+            box = {'markers': markers, 'mocap': {"rates": reader.point_rate, "units": units, "header": reader.header},
+                   'text': ret, "analog": analogs}
         return box
 
     @staticmethod
@@ -747,3 +796,17 @@ class JSONSUtl:
         with open(file, 'r') as infile:
             data = json.load(infile)
         return data
+
+class BasicIO:
+    @staticmethod
+    def read_txt(filename):
+        with open(filename) as f:
+            lines = f.readlines()
+        return lines
+
+    @staticmethod
+    def read_as_block(filename):
+        ret = ""
+        for s in BasicIO.read_txt(filename):
+            ret += s + "\n"
+        return ret

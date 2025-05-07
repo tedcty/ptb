@@ -18,7 +18,7 @@ from ptb.util.math.filters import Butterworth
 
 class info(Enum):
     name = "PTB"
-    version = "0.1.55"
+    version = "0.1.64"
     dscr = "\nAuckland Bioengineering Institute's Musculoskeletal Modelling Group\nPresents . . .\nA Python Toolbox\n"
     all = ""
 

@@ -8,7 +8,6 @@ import vtk
 from tqdm import tqdm
 from vtkmodules.util.numpy_support import vtk_to_numpy, numpy_to_vtk
 
-
 class VTKMeshUtl(Enum):
     ply = [".ply", vtk.vtkPLYReader, vtk.vtkPLYWriter]
     stl = [".stl", vtk.vtkSTLReader, vtk.vtkSTLWriter]
@@ -113,7 +112,11 @@ class VTKMeshUtl(Enum):
         return self.value[1]()
 
     def writer(self):
-        return self.value[2]()
+        try:
+            w = self.value[2]()
+        except TypeError:
+            w.SetDataModeToAscii()
+        return w
 
     def label(self):
         return self.value[0]
@@ -354,6 +357,10 @@ class VTKMeshUtl(Enum):
             colors = vtk.vtkNamedColors()
             v = colors.GetColor3d('Tomato')
             colour = [v.GetRed(), v.GetGreen(), v.GetBlue()]
+        if isinstance(colour, str):
+            colors = vtk.vtkNamedColors()
+            v = colors.GetColor3d(colour)
+            colour = [v.GetRed(), v.GetGreen(), v.GetBlue()]
 
         points = vtk.vtkPoints()
         points.InsertNextPoint(orig)
@@ -440,7 +447,9 @@ class VTKMeshUtl(Enum):
 
 
     @staticmethod
-    def make_sphere(loc, size=3.0):
+    def make_sphere(loc, size=3.0, colour=None):
+        if colour == None:
+            colour = "Cornsilk"
         sphereSource = vtk.vtkSphereSource()
         sphereSource.SetCenter(loc[0], loc[1], loc[2])
         sphereSource.SetRadius(size)
@@ -454,7 +463,7 @@ class VTKMeshUtl(Enum):
         actor = vtk.vtkActor()
         actor.SetMapper(mapper)
         colors = vtk.vtkNamedColors()
-        actor.GetProperty().SetColor(colors.GetColor3d("Cornsilk"))
+        actor.GetProperty().SetColor(colors.GetColor3d(colour))
         return actor, sphereSource
 
     @staticmethod

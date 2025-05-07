@@ -895,9 +895,12 @@ class Reader(Manager):
             # fourth value is floating-point (scaled) error estimate
             points[valid, 3] = (c & 0xff).astype(float) * scale
 
-            # fifth value is number of bits set in camera-observation byte
-            points[valid, 4] = sum((c & (1 << k)) >> k for k in range(8, 17))
-
+            try:
+                # fifth value is number of bits set in camera-observation byte
+                points[valid, 4] = sum((c & (1 << k)) >> k for k in range(8, 17))
+            except OverflowError:
+                c = raw[valid, 3].astype(np.int32)
+                points[valid, 4] = sum((c & (1 << k)) >> k for k in range(8, 17))
             if self.header.analog_count > 0:
                 n = self.header.analog_count
                 raw = np.frombuffer(self._handle.read(n * analog_bytes),

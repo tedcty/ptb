@@ -9,9 +9,11 @@ ptb/ml/tags.py
 ptb/util/__init__.py
 ptb/util/data.py
 ptb/util/gait.py
+ptb/util/lang.py
 ptb/util/io/__init__.py
 ptb/util/io/helper.py
 ptb/util/io/mesh.py
+ptb/util/io/opendialog.py
 ptb/util/io/mocap/__init__.py
 ptb/util/io/mocap/file_formats.py
 ptb/util/io/mocap/low_lvl/__init__.py
