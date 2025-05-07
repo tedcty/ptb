@@ -502,7 +502,6 @@ class Cloud(object):
         """
 
         assert A.shape == B.shape
-
         num_points = A.shape[0]
 
         # Calculate centroids
@@ -519,21 +518,24 @@ class Cloud(object):
         # Perform SVD
         U, S, Vt = np.linalg.svd(H)
 
-        # Calculate the rotation matrix
-        R = np.dot(Vt.T, U.T)
-
-        # Special reflection case
-        if np.linalg.det(R) < 0:
-            print("Reflection detected")
-            Vt[2, :] *= -1
+        if U.shape[0] >= 4 and U.shape[1] >= 4:
+            return Cloud.rigid_transform_svd(A.T, B.T)
+        else:
+            # Calculate the rotation matrix
             R = np.dot(Vt.T, U.T)
 
-        # Calculate the translation vector
-        t = centroid_B - np.dot(R, centroid_A)
-        M = np.eye(4)
-        M[:3, :3] = R
-        M[:3, 3] = t
-        return R, t, M
+            # Special reflection case
+            if np.linalg.det(R) < 0:
+                print("Reflection detected")
+                Vt[2, :] *= -1
+                R = np.dot(Vt.T, U.T)
+
+            # Calculate the translation vector
+            t = centroid_B - np.dot(R, centroid_A)
+            M = np.eye(4)
+            M[:3, :3] = R
+            M[:3, 3] = t
+            return R, t, M
 
     @staticmethod
     def transform_between_3x3_points_sets(source, target, rowpoints: bool = False, result_as_4x4: bool = True):
