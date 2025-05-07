@@ -1,17 +1,17 @@
-Metadata-Version: 2.2
+Metadata-Version: 2.4
 Name: ptb_beta
-Version: 0.1.5
+Version: 0.2.0
 Summary: This is the MMG Repository containing useful tools and development of useful tools for analysing, processing and modelling in python (and matlab)
 Author-email: "Ted Yeung, Thorben Pauli, Isabella Murrell, Homayoon Zarshenas" <tyeu008@aucklanduni.ac.nz>
+License-Expression: CC-BY-NC-SA-4.0
 Project-URL: Homepage, https://github.com/tedcty/ptb/
 Classifier: Programming Language :: Python :: 3
-Classifier: License :: OSI Approved :: MIT License
 Classifier: Operating System :: OS Independent
-Requires-Python: >=3.9
+Requires-Python: >=3.10
 Description-Content-Type: text/markdown
 Requires-Dist: pandas
 Requires-Dist: scipy
-Requires-Dist: numpy==1.26.4
+Requires-Dist: numpy
 Requires-Dist: vtk
 Requires-Dist: Pyside6
 Requires-Dist: tsfresh

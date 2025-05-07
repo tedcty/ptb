@@ -1,6 +1,6 @@
 pandas
 scipy
-numpy==1.26.4
+numpy
 vtk
 Pyside6
 tsfresh
