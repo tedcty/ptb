@@ -16,6 +16,8 @@ Module currently implemented to get joint and marker position
 class OsimModel:
     def __init__(self, filepath):
         self.osim = om.Model(filepath)
+        self.units ={'length': self.osim.get_length_units(),
+                     'force': self.osim.get_force_units()}
         self.osim.initSystem()
         self.osim.initializeState()
         self.state = self.osim.getWorkingState()
