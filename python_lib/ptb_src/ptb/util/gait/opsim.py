@@ -5,6 +5,7 @@ from ptb.util.data import StorageIO, StorageType, MYXML, TRC
 from enum import Enum
 import opensim as om
 import numpy as np
+import os
 
 from opensim import InverseKinematicsTool
 
@@ -192,6 +193,7 @@ class IK:
     def run_from_c3d(wkdir="M:/test/", root="M:/Mocap/P011/New Session/",
                      trial_c3d="Straight normal 1.c3d",
                      template='M:/template/Straight normal 1.xml',
+                     model = None,
                      mode=0):
         if mode == 0:
             IK.run_from_c3d_0(wkdir, trial_c3d, template)
@@ -199,16 +201,25 @@ class IK:
     @staticmethod
     def run_from_c3d_0(wkdir="M:/test/",
                        trial_c3d="Straight normal 1.c3d",
-                       template='M:/template/Straight normal 1.xml'):
+                       template='M:/template/Straight normal 1.xml',
+                       model=None):
 
         # read task
-        trc_name = trial_c3d[:trial_c3d.rindex('.c3d')]
+        trc_path = trial_c3d[:trial_c3d.rindex('.c3d')]
         trc = TRC.create_from_c3d(trial_c3d)
         trc.z_up_to_y_up()
+        trc_name = trc_path[trc_path.rindex("/") + 1:]
+        if not os.path.exists(wkdir):
+            os.makedirs(wkdir)
         trc.write("{0}{1}.trc".format(wkdir, trc_name))
+        os.listdir(wkdir)
+
         ik = InverseKinematicsTool(template)
+        ik.set_marker_file("{0}{1}.trc".format(wkdir, trc_name))
+        if model is None:
+            ik.setModel(model)
         b = ik.get_output_motion_file()
-        bf = "{0}/{1}.sto".format(b[:b.rindex("/")], trc_name)
+        bf = "{1}.sto".format(b[:b.rindex("/")], trc_name)
         ik.set_output_motion_file(bf)
 
         x = trc.data[:, 1]
