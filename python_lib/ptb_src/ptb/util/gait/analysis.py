@@ -4,6 +4,7 @@ import copy
 import os
 import time
 from shutil import copyfile
+import subprocess
 
 import matplotlib.pyplot as plt
 
@@ -16,8 +17,10 @@ from scipy import interpolate
 
 from ptb.util.gait.helpers import OsimHelper
 from ptb.util.gait.defaults import OsimIKLabels
-from ptb.util.data import StorageIO, StorageType, Yatsdo, TRC, MocapDO
+from ptb.util.data import StorageIO, StorageType, Yatsdo, TRC, MocapDO, MYXML
 from ptb.util.math.filters import Butterworth
+
+from opensim import InverseKinematicsTool
 
 
 class Analysis:
@@ -724,3 +727,85 @@ class Analysis:
         plt.show()
         pass
         return None
+
+
+class IK:
+    @staticmethod
+    def run(xml_file):
+        subprocess.run(["ik", "-S", xml_file])
+
+    @staticmethod
+    def run_from_c3d(wkdir="M:/test/", root="M:/Mocap/P011/New Session/",
+                     trial_c3d="Straight normal 1.c3d",
+                     template='M:/template/Straight normal 1.xml',
+                     model=None,
+                     mode=0):
+        if mode == 0:
+            IK.run_from_c3d_0(wkdir, trial_c3d, model, template)
+
+    @staticmethod
+    def run_from_c3d_0(wkdir="M:/test/",
+                       trial_c3d="Straight normal 1.c3d",
+                       model=None,
+                       template='M:/template/Straight normal 1.xml'):
+
+        # read task
+        trc_name = trial_c3d[:trial_c3d.rindex('.c3d')]
+        trc = TRC.create_from_c3d(trial_c3d)
+        trc.z_up_to_y_up()
+        trc.write("{1}.trc".format(wkdir, trc_name))
+        ik = InverseKinematicsTool(template)
+        if model is None:
+            ik.setModel(model)
+        b = ik.get_output_motion_file()
+        bf = "{1}.sto".format(b[:b.rindex("/")], trc_name)
+        ik.set_output_motion_file(bf)
+
+        x = trc.data[:, 1]
+        ik.setStartTime(x[0])
+        ik.setEndTime(x[-1])
+
+        try:
+            ik.run()
+        except RuntimeError:
+            pass
+        pass
+
+    @staticmethod
+    def write_ik_setup(trial, template, model, output_motion_file, save_name):
+        """
+        :param trial:
+        :param template:
+        :param model:
+        :param output_motion_file:
+        :param save_name:
+        """
+
+        trc: TRC = StorageIO.load(trial, StorageType.trc)
+        m = MYXML(filename=template)
+        pretty = True
+        try:
+            m.set_value("model_file", model)
+        except IndexError:
+            m.add_node("InverseKinematicsTool", "model_file", model)
+        try:
+            m.set_value("output_motion_file", output_motion_file)
+        except IndexError:
+            m.add_value("output_motion_file", output_motion_file)
+        try:
+            m.set_value("marker_file", trial)
+        except IndexError:
+            m.add_value("marker_file", trial)
+        try:
+            m.set_value("time_range", " " + str(trc.data[0, 1]) + " " + str(trc.data[-1, 1]))
+        except IndexError:
+            m.add_value("time_range", " " + str(trc.data[0, 1]) + " " + str(trc.data[-1, 1]))
+        m.write(save_name, pretty)
+
+    @staticmethod
+    def write_ik_setup_xml(ikconfig, save_name):
+        IK.write_ik_setup(ikconfig["marker_file"],
+                          ikconfig["template"],
+                          ikconfig["model_file"],
+                          ikconfig["output_motion_file"],
+                          save_name)
