@@ -750,11 +750,17 @@ class IK:
                        template='M:/template/Straight normal 1.xml'):
 
         # read task
-        trc_name = trial_c3d[:trial_c3d.rindex('.c3d')]
+        trc_path = trial_c3d[:trial_c3d.rindex('.c3d')]
         trc = TRC.create_from_c3d(trial_c3d)
         trc.z_up_to_y_up()
-        trc.write("{1}.trc".format(wkdir, trc_name))
+        trc_name = trc_path[trc_path.rindex("/") + 1:]
+        if not os.path.exists(wkdir):
+            os.makedirs(wkdir)
+        trc.write("{0}{1}.trc".format(wkdir, trc_name))
+        os.listdir(wkdir)
+
         ik = InverseKinematicsTool(template)
+        ik.set_marker_file("{0}{1}.trc".format(wkdir, trc_name))
         if model is None:
             ik.setModel(model)
         b = ik.get_output_motion_file()
