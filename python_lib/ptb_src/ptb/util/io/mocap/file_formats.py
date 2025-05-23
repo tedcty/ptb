@@ -10,6 +10,30 @@ from ptb.core import Yatsdo
 from ptb.util.io.mocap.low_lvl import c3d
 
 
+class MocapFlags(Enum):
+    DataRate = 'DataRate'
+    CameraRate = 'CameraRate'
+    NumFrames = 'NumFrames'
+    NumMarkers = 'NumMarkers'
+    Units = 'Units'
+    OrigDataRate = 'OrigDataRate'
+    OrigDataStartFrame = 'OrigDataStartFrame'
+    OrigNumFrames = 'OrigNumFrames'
+    mm = 'mm'
+    m = 'm'
+
+    @staticmethod
+    def unit(unit:str):
+        if MocapFlags.mm.value == unit:
+            return MocapFlags.mm
+        else:
+            return MocapFlags.m
+
+    @staticmethod
+    def defaults_to_list():
+        return [k for k in MocapFlags if isinstance(k.value, str) if k.value != 'mm' or k.value != 'm']
+
+
 class TRC(Yatsdo):
 
     @staticmethod
@@ -296,29 +320,34 @@ class TRC(Yatsdo):
         ms = []
         a = 0
         num_markers = len(self.marker_set.keys())
-        temp = np.zeros([self.data.shape[0], 3*num_markers+2])
+        temp = np.zeros([self.data.shape[0], 3 * num_markers + 2])
         temp[:, :2] = self.data[:, :2]
+        temp_cols = [c for c in self.col_labels[:2]]
         for m in self.marker_set:
             k = self.marker_set[m]
             j = k.to_numpy()
             start = offset + n
             end = start + 3
             temp[:, start: end] = j
-            col = ["X{0}".format(a+1), "Y{0}".format(a+1), "Z{0}".format(a+1)]
+            col = ["X{0}".format(a + 1), "Y{0}".format(a + 1), "Z{0}".format(a + 1)]
             p = pd.DataFrame(data=j, columns=col)
             self.marker_set[m] = p
+            temp_cols.append("{1}_X{0}".format(a + 1, m))
+            temp_cols.append("{1}_Y{0}".format(a + 1, m))
+            temp_cols.append("{1}_Z{0}".format(a + 1, m))
             n += 3
             a += 1
             ms.append(m)
         self.data = temp
+        self.col_labels = temp_cols
         if reset_units:
             self.headers[MocapFlags.Units.value] = "m"
         self.headers[MocapFlags.NumFrames.value] = 1
         self.headers[MocapFlags.OrigNumFrames.value] = 1
         self.headers[MocapFlags.NumMarkers.value] = len(ms)
 
-        col = [c for c in self.col_labels if ('frame' in c.lower() or 'time' in c.lower()) or c[:c.rindex('_')] in ms]
-        self.col_labels = col
+        # col = [c for c in self.col_labels if ('frame' in c.lower() or 'time' in c.lower()) or c[:c.rindex('_')] in ms]
+        # self.col_labels = col
         self.marker_names = ms
         self.update()
 
@@ -449,31 +478,6 @@ class TRC(Yatsdo):
         with open(filename, 'w') as writer:
             writer.writelines(lines)
         pass
-
-
-class MocapFlags(Enum):
-    DataRate = 'DataRate'
-    CameraRate = 'CameraRate'
-    NumFrames = 'NumFrames'
-    NumMarkers = 'NumMarkers'
-    Units = 'Units'
-    OrigDataRate = 'OrigDataRate'
-    OrigDataStartFrame = 'OrigDataStartFrame'
-    OrigNumFrames = 'OrigNumFrames'
-    mm = 'mm'
-    m = 'm'
-
-    @staticmethod
-    def unit(unit:str):
-        if MocapFlags.mm.value == unit:
-            return MocapFlags.mm
-        else:
-            return MocapFlags.m
-
-    @staticmethod
-    def defaults_to_list():
-        return [k for k in MocapFlags if isinstance(k.value, str) if k.value != 'mm' or k.value != 'm']
-
 
 
 class ForcePlate(Yatsdo):

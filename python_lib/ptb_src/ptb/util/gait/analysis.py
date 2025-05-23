@@ -753,7 +753,7 @@ class IK:
         :param save_name:
         """
         IKT.write_ik_setup(trial, template, model, output_motion_file, save_name)
-        
+
     @staticmethod
     def write_ik_setup_xml(ikconfig, save_name):
         IK.write_ik_setup(ikconfig["marker_file"],

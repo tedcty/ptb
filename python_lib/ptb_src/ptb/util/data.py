@@ -41,11 +41,15 @@ def milli():
 class MocapDO:
     def __init__(self):
         self.__raw__ = None
-        self.markers = None
+        self.markers: TRC = None
         self.force_plates = None
         self.emg = None
         self.imu = None
         self.other_analog = None
+
+    @property
+    def marker_set(self):
+        return self.markers.marker_set
 
     @staticmethod
     def create_from_c3d(file):
