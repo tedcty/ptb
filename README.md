@@ -6,7 +6,10 @@ This is a repository containing useful tools and development of useful tools for
 Contributors: Ted Yeung, Isabella Murrell, Homayoon Zarshenas, Thorben Pauli.
 
 ## Requirements
-Python 3.9 or above
+Opensim (tested on Opensim 4.5):
+conda install -y -c opensim-org opensim
+
+Python 3.10 or above
 Packages: 'pandas', 'scipy', 'numpy==1.26.4', 'scikit-learn', 'Pillow', 'vtk', 'PyQt6', 'tsfresh'
 
 ## Supported Data formats
