@@ -608,3 +608,20 @@ class ForcePlate(Yatsdo):
             data_w_cop[:, data.shape[1]:] = cop
             self.plate[p] = [idx, pd.DataFrame(data=data_w_cop, columns=data_col)]
             pass
+
+class OpensimMOTEnum(Enum):
+    filename = ["filename", "str"]
+    version = ["version", "int"]
+    nRows = ["nRows", "int"]
+    nColumns = ["nColumns", "int"]
+    inDegrees = ["inDegrees", "str"]
+    endheader = ["endheader", "str"]
+
+
+class OpensimMOT(Yatsdo):
+
+
+    @staticmethod
+    def create(filename):
+        pass
+
