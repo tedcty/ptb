@@ -51,6 +51,10 @@ class MocapDO:
     def marker_set(self):
         return self.markers.marker_set
 
+    def z_up_to_y_up(self):
+        r = self.markers.z_up_to_y_up()
+        self.force_plates.rotate(r)
+
     @staticmethod
     def create_from_c3d(file):
         sg = StorageIO.readc3d_general(file)
