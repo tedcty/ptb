@@ -5,5 +5,5 @@ if __name__ == '__main__':
     os.system('conda install -c opensim-org opensim')
     os.system('python -m pip install pandas scipy numpy PySide6 tsfresh vtk')
     # for building the package
-    os.system('python -m pip install build')
+    os.system('python -m pip install build toml')
     print("Done!")

@@ -299,11 +299,11 @@ class OSIMStorage:
     def __init__(self, data=None, col_names=None, fill_data=None):
         self.store = None
 
-
-if __name__ == "__main__":
-    d = 'C:/Users/ty8on/Downloads/walk20.mot'
-    w = 'C:/Users/ty8on/Downloads/walk20a.mot'
-    osim_mot = OSIMStorage.read(d)
-    osim_mot.write(w)
-
-    pass
+# Uncomment for testing
+# if __name__ == "__main__":
+#     d = './walk20.mot'
+#     w = './walk20a.mot'
+#     osim_mot = OSIMStorage.read(d)
+#     osim_mot.write(w)
+#
+#     pass
