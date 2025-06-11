@@ -485,7 +485,8 @@ class StorageIO(object):
                 p = trc.to_panda()
             if (sto_type == StorageType.mot or sto_type == StorageType.sto or
                     sto_type == StorageType.csv or sto_type == StorageType.captureU):
-                p = pd.read_csv(filename, delimiter=delimiter, skiprows=skip_rows)
+                p = pd.read_csv(filename, delimiter=delimiter, skiprows=skip_rows, index_col=False, dtype=np.float64)
+                pass
 
         except pd.errors.ParserError:
             p = StorageIO.failsafe_omega(filename, delimiter=delimiter)

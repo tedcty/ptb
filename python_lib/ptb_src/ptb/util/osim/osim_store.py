@@ -6,14 +6,40 @@ from ptb.core import Yatsdo
 from ptb.util.io.helper import StorageIO, StorageType
 
 
+class OSIMBoolean:
+    def __init__(self, value):
+        self.boo = value
+
+    @staticmethod
+    def convert(value):
+        if isinstance(value, str):
+            if 'yes' in value.lower():
+                return True
+            elif 'no' in value.lower():
+                return False
+        elif isinstance(value, bool):
+            if value:
+                return 'yes'
+            else:
+                return 'no'
+        return None
+
 class HeadersLabels(Enum):
-    version = "version"
-    nRows = "nRows"
-    nColumns = "nColumns"
-    inDegrees = "inDegrees"
-    endheader = "endheader"
-    data_namme = "name"
-    notes = "notes"
+    trial = ["type", str]
+    version = ["version", int]
+    nRows = ["nRows", int]
+    nColumns = ["nColumns", int]
+    inDegrees = ["inDegrees", OSIMBoolean.convert]
+    endheader = ["endheader", str]
+    data_namme = ["name", str]
+    notes = ["notes", str]
+
+    @staticmethod
+    def get(key_name):
+        for header in HeadersLabels:
+            if header.value[0] == key_name:
+                return header
+        return None
 
 
 class OsimStorageV1(object):
@@ -155,21 +181,21 @@ class OSIMStorageV2(Yatsdo):
         self.header = header
         self.ext = ext
 
-    @staticmethod
-    def yes_no_to_true_false(wo):
-        if 'yes' in wo.lower():
-            return True
-        elif 'no' in wo.lower():
-            return False
-        return None
+    # @staticmethod
+    # def yes_no_to_true_false(wo):
+    #     if 'yes' in wo.lower():
+    #         return True
+    #     elif 'no' in wo.lower():
+    #         return False
+    #     return None
 
-    @staticmethod
-    def true_false_to_yes_no(wo):
-        if wo:
-            return 'yes'
-        elif not wo:
-            return 'no'
-        return None
+    # @staticmethod
+    # def true_false_to_yes_no(wo):
+    #     if wo:
+    #         return 'yes'
+    #     elif not wo:
+    #         return 'no'
+    #     return None
 
     @staticmethod
     def read(filename):
@@ -178,33 +204,40 @@ class OSIMStorageV2(Yatsdo):
         s = StorageIO.load(filename, StorageType.mot)
 
         k = s.info["header"]
-        header = {"type": k[0].strip(),
-                  "version": int(k[1].split('=')[1].strip()),
-                  "nRows": int(k[2].split('=')[1].strip()),
-                  "nColumns": int(k[3].split('=')[1].strip()),
-                  "inDegrees": OSIMStorageV2.yes_no_to_true_false(k[4].split('=')[1].strip()),
-                  "note": "{0}{1}".format(k[6], k[7]),
-                  "end": k[9]
-                  }
+        header = {HeadersLabels.trial: k[0].strip()}
+
+        for i in range(1, len(k)):
+            if '=' in k[i]:
+                parts = k[i].split('=')
+                h = HeadersLabels.get(parts[0].strip())
+                typ = h.value[1]
+                attr = typ(parts[1].strip())
+                header[h] = attr
+            else:
+                h = HeadersLabels.get(k[i].strip())
+                typ = h.value[1]
+                header[h] = typ(k[i].strip())
+
         ret = OSIMStorageV2(s.data, filename=filename, header=header)
         return ret
 
     def update(self):
         super().update()
-        self.header['nRows'] = self.data.shape[0]
-        self.header['nColumns'] = self.data.shape[1]
+        self.header[HeadersLabels.nRows] = self.data.shape[0]
+        self.header[HeadersLabels.nColumns] = self.data.shape[1]
         pass
 
     def header2string(self, h):
-        if h not in ['type', 'note', 'end']:
-            if h not in ['inDegrees']:
-                return "{0}={1}\n".format(h, self.header[h])
+        if h not in [HeadersLabels.trial, HeadersLabels.notes, HeadersLabels.endheader]:
+            if h not in [HeadersLabels.inDegrees]:
+                return "{0}={1}\n".format(h.value[0], self.header[h])
             else:
-                return "{0}={1}\n".format(h, OSIMStorageV2.true_false_to_yes_no(self.header[h]))
+                return "{0}={1}\n".format(h.value[0], OSIMBoolean.convert(self.header[h]))
         else:
             return "{0}{1}\n".format('', self.header[h])
 
     def write(self, filename):
+        self.update()
         lines = [self.header2string(h) for h in self.header]
         cols = ""
         for c in self.col_labels:
@@ -214,7 +247,7 @@ class OSIMStorageV2(Yatsdo):
         for i in range(0, self.data.shape[0]):
             ret = ""
             for j in range(0, self.data.shape[1]):
-                ret += "{0:.8f}\t".format(self.data[i,j])
+                ret += "{0:.6f}\t".format(self.data[i,j])
             ret.strip()
             ret += '\n'
             lines.append(ret)
@@ -235,3 +268,42 @@ class OSIMStorageV2(Yatsdo):
         with open(filename, 'w') as writer:
             writer.writelines(lines)
         pass
+
+class OSIMStorage:
+
+    @staticmethod
+    def simple_header_template():
+        header = {HeadersLabels.trial: 'default',
+                  HeadersLabels.version: 1,
+                  HeadersLabels.nRows: 0,
+                  HeadersLabels.nColumns: 0,
+                  HeadersLabels.inDegrees: False,
+                  HeadersLabels.endheader: HeadersLabels.endheader.value[0]}
+        return header
+
+    @staticmethod
+    def create(data, header, filename):
+        osim_store = OSIMStorage()
+        osim_store.store = OSIMStorageV2(data, filename=filename, header=header)
+        pass
+
+    @staticmethod
+    def read(f):
+        osim_store = OSIMStorage()
+        osim_store.store = OSIMStorageV2.read(f)
+        return osim_store
+
+    def write(self, f):
+        self.store.write(f)
+
+    def __init__(self, data=None, col_names=None, fill_data=None):
+        self.store = None
+
+
+if __name__ == "__main__":
+    d = 'C:/Users/ty8on/Downloads/walk20.mot'
+    w = 'C:/Users/ty8on/Downloads/walk20a.mot'
+    osim_mot = OSIMStorage.read(d)
+    osim_mot.write(w)
+
+    pass
