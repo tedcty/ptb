@@ -345,6 +345,7 @@ class General:
 
 if __name__ == '__main__':
     x = "X:/SFTIWearable/Test/S17/Session/heel rise.c3d"
+
     IK.run_from_c3d(trial_c3d=x)
     # t = "E:/Repo/bluepython/yatpkg_src/yatpkg/util/examples/example_data/opensim/Sit00.trc"
     # m = "E:/Repo/bluepython/yatpkg_src/yatpkg/util/examples/example_data/opensim/gait2392_simbody.osim"
