@@ -164,6 +164,8 @@ class OsimStorageV1(object):
 
 class OSIMStorageV2(Yatsdo):
     """
+    Example of header:
+
     Coordinates
     version=1
     nRows=4269
@@ -181,24 +183,13 @@ class OSIMStorageV2(Yatsdo):
         self.header = header
         self.ext = ext
 
-    # @staticmethod
-    # def yes_no_to_true_false(wo):
-    #     if 'yes' in wo.lower():
-    #         return True
-    #     elif 'no' in wo.lower():
-    #         return False
-    #     return None
-
-    # @staticmethod
-    # def true_false_to_yes_no(wo):
-    #     if wo:
-    #         return 'yes'
-    #     elif not wo:
-    #         return 'no'
-    #     return None
-
     @staticmethod
-    def read(filename):
+    def read(filename: str):
+        """
+        This method reads mot/sto opensim files and create a OSIMStorageV2
+        :param filename: file path
+        :return: An instance of OSIMStorageV2 Object
+        """
         if not os.path.exists(filename):
             return None
         s = StorageIO.load(filename, StorageType.mot)
@@ -252,18 +243,6 @@ class OSIMStorageV2(Yatsdo):
             ret += '\n'
             lines.append(ret)
             pass
-        # f = open(filename + ".csv", "r")
-        # count = 0
-        # stream = "Hello world"
-        # while len(stream) > 0:
-        #     stream = f.readline()
-        #     if count == 0:
-        #         count += 1
-        #         continue
-        #     else:
-        #         count += 1
-        #         lines.append(stream)
-        # f.close()
 
         with open(filename, 'w') as writer:
             writer.writelines(lines)
@@ -282,22 +261,40 @@ class OSIMStorage:
         return header
 
     @staticmethod
-    def create(data, header, filename):
-        osim_store = OSIMStorage()
-        osim_store.store = OSIMStorageV2(data, filename=filename, header=header)
-        pass
+    def create(data, header, filename, store_version=OSIMStorageV2):
+        """
+        This method reads mot/sto opensim files and create an opensim storage object.
+        Current creates an OSIMStorageV2 as the store but change be changed.
+        :param filename: file path
+        :param header: dictionary of header information
+        :param data: panda Dataframe
+        :param store_version: Storage class handler
+        :return: An instance of opensim storage object
+        """
+        ret = store_version(data, filename=filename, header=header)
+        ext = filename.split(".")[-1]
+        if 'mot' in ext or 'sto' in ext:
+            ret.ext = ".{0}".format(ext)
+        return OSIMStorage(ret)
 
     @staticmethod
-    def read(f):
-        osim_store = OSIMStorage()
-        osim_store.store = OSIMStorageV2.read(f)
-        return osim_store
+    def read(f, store_version=OSIMStorageV2):
+        """
+        This method reads mot/sto opensim files and create an opensim storage object.
+        Current creates an OSIMStorageV2 as the store but change be changed.
+        :param f: file path
+        :param store_version: Storage version
+        :return: An instance of opensim storage object
+        """
+
+        return OSIMStorage(store_version.read(f))
 
     def write(self, f):
         self.store.write(f)
 
-    def __init__(self, data=None, col_names=None, fill_data=None):
-        self.store = None
+    def __init__(self, store=None, ext='mot'):
+        self.store = store
+        self.ext = ext
 
 # Uncomment for testing
 # if __name__ == "__main__":
