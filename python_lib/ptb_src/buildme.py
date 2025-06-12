@@ -12,13 +12,13 @@ if __name__ == '__main__':
     # this part of the code automatically update version information in the core.py file
     with open('pyproject.toml', 'r') as f:
         config = toml.load(f)
-    info = "class info(Enum):"
-    info += "\tname = \"PTB\""
-    info += "\tversion = \"0.1.38\""
-
-    info += "\tdef __str__(self):"
-    info += "\t\tret = \"{0}\".format(self.value)"
-    info += "\t\treturn ret"
+    # info = "class info(Enum):"
+    # info += "\tname = \"PTB\""
+    # info += "\tversion = \"0.1.38\""
+    #
+    # info += "\tdef __str__(self):"
+    # info += "\t\tret = \"{0}\".format(self.value)"
+    # info += "\t\treturn ret"
 
     f = open("./ptb/core.py", "r")
     core = f.readlines()
@@ -30,11 +30,29 @@ if __name__ == '__main__':
             print(core[c+2])
             k = core[c+2].replace(core[c+2].split('=')[1].strip(), "\"" + config['project']["version"] + "\"")
             core[c + 2] = k
+            print(core[c+2])
             break
 
     with open("./ptb/core.py", "w") as outfile:
         for c in core:
             outfile.write(c)
+
+    f = open("./ptb/__init__.py", "r")
+    core = f.readlines()
+    f.close()
+
+    for c in range(len(core)):
+        if "__version__" in core[c]:
+            print(core[c])
+            k = core[c].replace(core[c].split('=')[1].strip(), "\"" + config['project']["version"] + "\"")
+            core[c] = k
+            print(core[c])
+            break
+
+    with open("./ptb/__init__.py", "w") as outfile:
+        for c in core:
+            outfile.write(c)
+
     os.listdir("./ptb/")
 
     if not os.path.exists('./archive/dist/'):

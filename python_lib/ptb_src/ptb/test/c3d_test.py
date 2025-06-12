@@ -4,6 +4,7 @@ import os
 import numpy as np
 import pandas as pd
 import time
+import ptb
 
 
 if __name__ == "__main__":
@@ -12,6 +13,7 @@ if __name__ == "__main__":
     # osim_mot = OSIMStorage.read(d)
     # osim_mot.write(w)
     print("read")
+    print(ptb.__version__)
     start = time.time()
     f = 'I:/walking_speed_NoAFO_Ella.c3d'
     m = MocapDO.create_from_c3d(f)
