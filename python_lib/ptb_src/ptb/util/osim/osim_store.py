@@ -24,6 +24,40 @@ class OSIMBoolean:
                 return 'no'
         return None
 
+class OSIMForcePlate(Enum):
+    time = 0
+    ground_force = ['ground_force', 'v', 'p']
+    ground_torque = 'ground_torque'
+
+    @staticmethod
+    def map_from_c3d(m):
+        if m == OSIMForcePlate.ground_force:
+            return {'v': ['Force.Fx', 'Force.Fy', 'Force.Fz'], 'p': ['COP.Px', 'COP.Py','COP.Pz']}
+        if m == OSIMForcePlate.ground_torque:
+            return ['Moment.Mx', 'Moment.My', 'Moment.Mz']
+        return None
+
+    def generate_label(self, plate:int):
+        ret = {}
+        xyz = ['x', 'y', 'z']
+        if isinstance(self.value, list):
+            for i in range(1, len(self.value)):
+                v = []
+                for j in range(0, 3):
+                    s = "{0}{1}_{2}{3}".format(self.value[0], plate,self.value[i], xyz[j])
+                    v.append(s)
+                ret[self.value[i]] = v
+        elif isinstance(self.value, str):
+            v = []
+            for j in range(0, 3):
+                s = "{0}{1}_{2}".format(self.value, plate, xyz[j])
+                v.append(s)
+            ret['d'] = v
+        else:
+            ret['t'] = 'time'
+        return ret
+
+
 class HeadersLabels(Enum):
     trial = ["type", str]
     version = ["version", int]
@@ -296,11 +330,10 @@ class OSIMStorage:
         self.store = store
         self.ext = ext
 
-# Uncomment for testing
+# # Uncomment for testing
 # if __name__ == "__main__":
-#     d = './walk20.mot'
-#     w = './walk20a.mot'
-#     osim_mot = OSIMStorage.read(d)
-#     osim_mot.write(w)
-#
+#     # d = './walk20.mot'
+#     # w = './walk20a.mot'
+#     # osim_mot = OSIMStorage.read(d)
+#     # osim_mot.write(w)
 #     pass

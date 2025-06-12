@@ -506,20 +506,20 @@ class ForcePlate(Yatsdo):
         for p in self.plate:
             x = self.plate[p]
             xf = x[1]
-            force_labels = [f for f in xf.columns if "Force" in f]
-            force = xf[force_labels].to_numpy()
-            xf[force_labels[0]] = force[:, 2]
-            xf[force_labels[2]] = -1 * force[:, 0]
-
-            moment_labels = [f for f in xf.columns if "Moment" in f]
-            moment = xf[moment_labels].to_numpy()
-            xf[moment_labels[0]] = moment[:, 2]
-            xf[moment_labels[2]] = moment[:, 0]
+            # force_labels = [f for f in xf.columns if "Force" in f]
+            # force = xf[force_labels].to_numpy()
+            # xf[force_labels[0]] = force[:, 2]
+            # xf[force_labels[2]] = -1 * force[:, 0]
+            #
+            # moment_labels = [f for f in xf.columns if "Moment" in f]
+            # moment = xf[moment_labels].to_numpy()
+            # xf[moment_labels[0]] = moment[:, 2]
+            # xf[moment_labels[2]] = moment[:, 0]
 
             COP_labels = [f for f in xf.columns if "COP" in f]
             COP = xf[COP_labels].to_numpy()
-            xf[COP_labels[0]] = COP[:, 2]
-            xf[COP_labels[2]] = COP[:, 0]
+            # xf[COP_labels[0]] = COP[:, 2]
+            xf[COP_labels[2]] = -COP[:, 2]
             self.plate[p][1] = xf
 
     def __rotate__(self, r, include_cop=True):
