@@ -30,11 +30,12 @@ class OSIMForcePlate(Enum):
     ground_torque = 'ground_torque'
 
     @staticmethod
-    def map_from_c3d(m):
+    def map_from_c3d(m, p:int):
         if m == OSIMForcePlate.ground_force:
-            return {'v': ['Force.Fx', 'Force.Fy', 'Force.Fz'], 'p': ['COP.Px', 'COP.Py','COP.Pz']}
+            return {'v': ['Force.Fx{0}'.format(p), 'Force.Fy{0}'.format(p), 'Force.Fz{0}'.format(p)],
+                    'p': ['COP.Px{0}'.format(p), 'COP.Py{0}'.format(p),'COP.Pz{0}'.format(p)]}
         if m == OSIMForcePlate.ground_torque:
-            return ['Moment.Mx', 'Moment.My', 'Moment.Mz']
+            return ['Moment.Mx{0}'.format(p), 'Moment.My{0}'.format(p), 'Moment.Mz{0}'.format(p)]
         return None
 
     def generate_label(self, plate:int):

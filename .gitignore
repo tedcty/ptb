@@ -11,3 +11,12 @@ python_lib/ptb_src/ptb/util/io/mocap/low_lvl/__pycache__/__init__.cpython-312.py
 python_lib/ptb_src/ptb/util/io/mocap/low_lvl/__pycache__/c3d.cpython-312.pyc
 python_lib/ptb_src/ptb/util/math/__pycache__/__init__.cpython-312.pyc
 python_lib/ptb_src/ptb/util/math/__pycache__/filters.cpython-312.pyc
+python_lib/ptb_src/ptb/util/__pycache__/data.cpython-311.pyc
+python_lib/ptb_src/ptb/util/io/__pycache__/helper.cpython-311.pyc
+python_lib/ptb_src/ptb/util/io/__pycache__/mesh.cpython-311.pyc
+python_lib/ptb_src/ptb/util/io/mocap/__pycache__/file_formats.cpython-311.pyc
+python_lib/ptb_src/ptb/util/io/mocap/low_lvl/__pycache__/__init__.cpython-311.pyc
+python_lib/ptb_src/ptb/util/io/mocap/low_lvl/__pycache__/c3d.cpython-311.pyc
+python_lib/ptb_src/ptb/util/math/__pycache__/stat.cpython-311.pyc
+python_lib/ptb_src/ptb/util/osim/__pycache__/__init__.cpython-311.pyc
+python_lib/ptb_src/ptb/util/osim/__pycache__/osim_store.cpython-311.pyc

@@ -496,6 +496,7 @@ class ForcePlate(Yatsdo):
         self.origin_offset = None
         self.num_of_plates = -1
         self.plate = {}
+        self.units = None
 
     def rotate(self, r, flip_z=True):
         if flip_z:

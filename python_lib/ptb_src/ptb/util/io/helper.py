@@ -344,6 +344,10 @@ class StorageIO(object):
                 analog_labels = []
             point_labels = [a.strip() for a in reader.point_labels]
             rate_diff = int(reader.analog_rate / reader.point_rate)
+            analog_group = reader.groups.get('ANALOG')
+            analog_unit = analog_group.params['UNITS'].string_array
+            if len (analog_labels) == len(analog_unit):
+                analog_units = {analog_labels[a]:analog_unit[a] for a in range(0, len(analog_unit))}
             ret = {'analog_channels_label': analog_labels,
                    'number_of_force_plates': used,
                    'force_plate_corners': force_plate_corners,
@@ -355,6 +359,7 @@ class StorageIO(object):
                    'num_frames': num_frames,
                    'first_frame': first_frame,
                    'num_analog_frames': int((num_frames + 1) * rate_diff),
+                   'analog_unit': analog_units,
                    'rate-diff(A2M)': rate_diff,
                    'point_label': point_labels,
                    'point_label_expanded': 0,

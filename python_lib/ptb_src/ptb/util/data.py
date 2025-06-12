@@ -9,7 +9,7 @@ from typing import Optional
 
 from datetime import datetime, timezone
 from vtkmodules.vtkIOXML import vtkXMLPolyDataWriter
-from ptb.util.osim.osim_store import OSIMStorageV2
+from ptb.util.osim.osim_store import OSIMStorage, OSIMForcePlate, HeadersLabels
 
 """
 TODOs:
@@ -46,6 +46,7 @@ class MocapDO:
         self.emg = None
         self.imu = None
         self.other_analog = None
+        self.filepath = ""
 
     @property
     def marker_set(self):
@@ -55,11 +56,55 @@ class MocapDO:
         r = self.markers.z_up_to_y_up()
         self.force_plates.rotate(r)
 
+    def export_opensim_mot_force_file(self, out_dir):
+        f = self.filepath
+        header = OSIMStorage.simple_header_template()
+        header[HeadersLabels.trial] = os.path.split(f)[1][:os.path.split(f)[1].rindex('.')]
+        header[HeadersLabels.nRows] = self.force_plates.data.shape[0]
+        header[HeadersLabels.nColumns] = self.force_plates.num_of_plates * 9 + 1
+        header[HeadersLabels.inDegrees] = True
+        data = np.zeros([header[HeadersLabels.nRows], header[HeadersLabels.nColumns]])
+        data[:, 0] = self.force_plates.x
+        plates = []
+        unit = 1
+        if self.force_plates.units["COP"]["COP.Px1"] == 'mm':
+            unit = 1000
+
+        for p in self.force_plates.plate:
+            xf = self.force_plates.plate[p][1]
+            idx = self.force_plates.plate[p][0]
+            plate = [OSIMForcePlate.ground_force, OSIMForcePlate.ground_torque]
+            info_plate = []
+            for d in plate:
+                k = d.generate_label(self.force_plates.plate[p][0])
+                l = OSIMForcePlate.map_from_c3d(d, idx)
+                if d == OSIMForcePlate.ground_force:
+                    v_df = pd.DataFrame(data=xf[l["v"]].to_numpy(), columns=k["v"])
+                    p_df = pd.DataFrame(data=xf[l["p"]].to_numpy() / unit, columns=k["p"])
+                    f = pd.concat([v_df, p_df], axis=1)
+                    info_plate.append(f)
+                else:
+                    info_plate.append(pd.DataFrame(data=xf[l].to_numpy(), columns=k['d']))
+                pass
+            g = pd.concat(info_plate, axis=1)
+            plates.append(g)
+        h = pd.concat(plates, axis=1)
+        data[:, 1:] = h.to_numpy()
+        osimcols = [c for c in h.columns]
+        osimcols.insert(0, 'time')
+        data_df = pd.DataFrame(data=data, columns=osimcols)
+        w = "{0}{1}_ptb.mot".format(out_dir, header[HeadersLabels.trial])
+        osim_mot = OSIMStorage.create(data_df, header, w)
+        osim_mot.write(w)
+        return osim_mot
+
     @staticmethod
     def create_from_c3d(file):
+        # todo need to merge sg with s
         sg = StorageIO.readc3d_general(file)
         s = StorageIO.simple_readc3d(file)
         m = MocapDO()
+        m.filepath = file
         m.markers = TRC.create_from_c3d_dict(s, file)
         paramF = {'corners': sg['force_plate_corners'],
                   'origin': sg['force_plate_origins_from_corner'],
@@ -67,6 +112,17 @@ class MocapDO:
                   }
         ad = sg["analog_data"]
         ad_col = [c for c in ad.columns if 'Force' in c or 'Moment' in c or 'frame' in c]
+        forces_unit = {c:sg["analog_unit"][c] for c in sg["analog_unit"] if 'Force' in c }
+        moment_unit = {c:sg["analog_unit"][c] for c in sg["analog_unit"] if 'Moment' in c}
+        cop_unit = {}
+
+        for i in moment_unit:
+            unit = moment_unit[i]
+            dk = unit.split('N')
+            dk[0] = "{0}N".format(dk[0])
+            cp = i.replace('Moment', "COP")
+            cp = cp.replace("M", "P")
+            cop_unit[cp] = dk[1]
         ad_col.insert(0,'time')
         ad_force = sg["analog_data"][ad_col[1:]]
         p = np.zeros([ad_force.shape[0], ad_force.shape[1]+1])
@@ -74,6 +130,7 @@ class MocapDO:
         p[:, 1:] = ad_force.to_numpy()
         force_data = pd.DataFrame(data=p, columns=ad_col)
         f = ForcePlate.create(paramF, force_data)
+        f.units = {'Force': forces_unit, 'Moment': moment_unit, 'COP': cop_unit}
         m.force_plates = f
         return m
 
@@ -464,9 +521,9 @@ Below are the helper class to provide backward compatibility
 
 """
 
-class OSIMStorage(OSIMStorageV2):
-    def __init__(self, data, col_names=None, fill_data=False, filename="", header=None, ext=".sto"):
-        super().__init__(data, col_names, fill_data, filename, header, ext)
+# class OSIMStorage(OSIMStorageV2):
+#     def __init__(self, data, col_names=None, fill_data=False, filename="", header=None, ext=".sto"):
+#         super().__init__(data, col_names, fill_data, filename, header, ext)
 
 
 class Yatsdo(Yatsdo):
