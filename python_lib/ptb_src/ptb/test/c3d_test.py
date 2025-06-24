@@ -1,10 +1,10 @@
-from ptb.util.data import MocapDO
+from ptb.util.data import MocapDO, TRC
 from ptb.util.osim.osim_store import OSIMForcePlate, OSIMStorage, HeadersLabels
 import os
 import numpy as np
 import pandas as pd
 import time
-import ptb
+import opensim as osim
 
 
 if __name__ == "__main__":
@@ -13,15 +13,32 @@ if __name__ == "__main__":
     # osim_mot = OSIMStorage.read(d)
     # osim_mot.write(w)
     print("read")
-    print(ptb.__version__)
-    start = time.time()
+    start0 = time.time()
     f = 'I:/walking_speed_NoAFO_Ella.c3d'
     m = MocapDO.create_from_c3d(f)
-    print(time.time() - start)
+    print(time.time() - start0)
+    start = time.time()
     m.z_up_to_y_up()
-    print(time.time() - start)
+    print("z_to_y {0}".format(time.time() - start))
+    start = time.time()
+    m.markers.write('I:/walking_speed_NoAFO_Ella.trc')
+    print("write time {0}".format(time.time() - start))
+    start = time.time()
     m.export_opensim_mot_force_file('I:/')
-    print(time.time() - start)
+    print("export mot time: {0}".format(time.time() - start))
+    start = time.time()
+    trc = TRC.read('I:/walking_speed_NoAFO_Ella.trc')
+    print("read trc time: {0}".format(time.time() - start))
+    start = time.time()
+    c = trc.get_samples(trc.x)
+    print("resample trc time: {0}".format(time.time() - start))
+    print("total: {0}".format(time.time() - start0))
+
+    print("osim")
+    omot = OSIMStorage.read("I:/walking_speed_NoAFO_Ella_ptb.mot")
+    id_tool = osim.InverseDynamicsTool("I:/ID_setup.xml")
+    id_tool.run()
+    pass
     # header = OSIMStorage.simple_header_template()
     # header[HeadersLabels.trial] = os.path.split(f)[1][:os.path.split(f)[1].rindex('.')]
     # header[HeadersLabels.nRows] = m.force_plates.data.shape[0]

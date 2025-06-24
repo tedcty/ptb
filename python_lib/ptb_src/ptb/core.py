@@ -104,11 +104,16 @@ class Yatsdo(object):
             for i in range(1, self.data.shape[1]):
                 p = interpolate.InterpolatedUnivariateSpline(self.x, self.data[:, i])
                 a = np.isnan(self.data[:, i])
+                boo = np.sum(a) > 0 # is there nan
                 b = [b for b in range(0, a.shape[0]) if not a[b]]
-                if len(b) < a.shape[0] and fill_data:
-                    p = interpolate.InterpolatedUnivariateSpline(self.x[b], self.data[b, i])
+                if len(b) < a.shape[0] and fill_data or boo:
+                    try:
+                        p = interpolate.InterpolatedUnivariateSpline(self.x[b], self.data[b, i])
+                    except Exception:
+                        pass
                 self.curve[i] = p
-                self.dev_curve[i] = p.derivative()
+                if p is not None:
+                    self.dev_curve[i] = p.derivative()
 
         self.size = self.data.shape
         pass

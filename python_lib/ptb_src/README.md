@@ -5,7 +5,7 @@ Contributors: Ted Yeung, Isabella Murrell, Homayoon Zarshenas, Thorben Pauli.
 
 ## Requirements
 Python 3.9 or above
-Packages: 'pandas', 'scipy', 'numpy==1.26.4', 'scikit-learn', 'Pillow', 'vtk', 'PyQt6', 'tsfresh'
+Packages: 'pandas', 'scipy', 'numpy', 'scikit-learn', 'Pillow', 'vtk', 'PyQt6', 'tsfresh'
 
 ## Supported Data formats
 ### Mocap

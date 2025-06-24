@@ -1,4 +1,5 @@
 import copy
+import time
 from copy import deepcopy
 from enum import Enum
 
@@ -258,23 +259,32 @@ class TRC(Yatsdo):
         return TRC.create_from_c3d_dict(c3d_data, data, fill_data)
 
     def z_up_to_y_up(self):
-        offset = 2
-        n = 0
+        # offset = 2
+        # n = 0
         r = Rotation.from_euler('xyz', [-90, 0, 0], degrees=True)
+
+        k = len(self.marker_set.keys())
+        d0 = self.data[:, 2:(k*3)+2]
+        #j = int((d0.shape[0]*d0.shape[1])/3)
+        kp = np.vstack([self.marker_set[m].to_numpy() for m in self.marker_set])
+        y = (np.matmul(r.as_matrix(), kp.T)).T
+
+        yp = np.hstack([y[i:i+d0.shape[0], :] for i in range(0, y.shape[0], d0.shape[0])])
+        self.data[:, 2:(k * 3) + 2] = yp
         # r1 = Rotation.from_euler('xyz', [0, -90, 0], degrees=True)
         # r = Rotation.from_matrix(np.matmul(r1.as_matrix(), r0.as_matrix()))
-        for m in self.marker_set:
-            k = self.marker_set[m]
-            j = k.to_numpy()
-
-            y = np.matmul(r.as_matrix(), j.T)
-            start = offset + n
-            end = start + 3
-            self.data[:, start: end] = y.T
-            col = [c for c in k.columns]
-            p = pd.DataFrame(data=y.T, columns=col)
-            self.marker_set[m] = p
-            n += 3
+        # for m in self.marker_set:
+        #     k = self.marker_set[m]
+        #     j = k.to_numpy()
+        #
+        #     y = np.matmul(r.as_matrix(), j.T)
+        #     start = offset + n
+        #     end = start + 3
+        #     self.data[:, start: end] = y.T
+        #     col = [c for c in k.columns]
+        #     p = pd.DataFrame(data=y.T, columns=col)
+        #     self.marker_set[m] = p
+        #     n += 3
         self.update()
         return r.as_matrix()
 
@@ -499,6 +509,7 @@ class ForcePlate(Yatsdo):
         self.units = None
 
     def rotate(self, r, flip_z=True):
+        start = time.time()
         if flip_z:
             r0 = Rotation.from_euler('xyz', [180, 0, 0], degrees=True)
             self.__rotate__(r0.as_matrix())
@@ -522,6 +533,8 @@ class ForcePlate(Yatsdo):
             # xf[COP_labels[0]] = COP[:, 2]
             xf[COP_labels[2]] = -COP[:, 2]
             self.plate[p][1] = xf
+        print("force rotation {0}".format(time.time()-start))
+        pass
 
     def __rotate__(self, r, include_cop=True):
         for p in self.plate:
@@ -529,12 +542,12 @@ class ForcePlate(Yatsdo):
             xf = x[1]
             force_labels = [f for f in xf.columns if "Force" in f]
             moment_labels = [f for f in xf.columns if "Moment" in f]
-            COP_labels = [f for f in xf.columns if "COP" in f]
             force = xf[force_labels]
             force_df = (r @ force.to_numpy().T).T
             moment = xf[moment_labels]
             moment_df = (r @ moment.to_numpy().T).T
             if include_cop:
+                COP_labels = [f for f in xf.columns if "COP" in f]
                 COP = xf[COP_labels]
                 COP_df = (r @ COP.to_numpy().T).T
                 xf[COP_labels] = COP_df

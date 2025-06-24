@@ -199,6 +199,8 @@ class OsimStorageV1(object):
 
 class OSIMStorageV2(Yatsdo):
     """
+    Storage Object that mimics sto files used with opensim
+
     Example of header:
 
     Coordinates
