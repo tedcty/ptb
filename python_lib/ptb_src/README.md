@@ -4,7 +4,7 @@ This is the MMG Repository containing useful tools and development of useful too
 Contributors: Ted Yeung, Isabella Murrell, Homayoon Zarshenas, Thorben Pauli.
 
 ## Requirements
-Python 3.9 or above
+Python 3.10 or above
 Packages: 'pandas', 'scipy', 'numpy', 'scikit-learn', 'Pillow', 'vtk', 'PyQt6', 'tsfresh'
 
 ## Supported Data formats
