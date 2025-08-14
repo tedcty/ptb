@@ -67,3 +67,6 @@ if __name__ == '__main__':
         os.remove('./dist/'+i)
 
     os.system('python -m build ./')
+    with open("./dist/latest.txt", "w") as outfile:
+        file = [w for w in os.listdir("./dist/") if w.endswith('.whl')]
+        outfile.write(file[0])
