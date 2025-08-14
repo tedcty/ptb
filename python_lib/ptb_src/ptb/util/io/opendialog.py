@@ -3,9 +3,9 @@ from PySide6.QtWidgets import (QFileDialog, QComboBox)
 
 class OpenFiles(QFileDialog):
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, title="Open Files"):
         super().__init__(parent)
-        self.setWindowTitle("Open Files")
+        self.setWindowTitle(title)
         options = QFileDialog.Options()
         options |= QFileDialog.Option.DontUseNativeDialog
         self.setOption(options)

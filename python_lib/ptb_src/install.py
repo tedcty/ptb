@@ -13,4 +13,4 @@ def find_whl(pattern, path):
 
 
 if __name__ == "__main__":
-    os.system("pip install {}".format(find_whl('*.whl', './dist/')))
+    os.system("python -m pip install {}".format(find_whl('*.whl', './dist/')))

@@ -742,6 +742,7 @@ class MinionKey(Enum):
         for v in MinionKey:
             if v.name == name:
                 return v
+        return None
 
 
 class BasicVoxelInfo:
