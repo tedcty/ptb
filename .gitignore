@@ -20,3 +20,4 @@ python_lib/ptb_src/ptb/util/io/mocap/low_lvl/__pycache__/c3d.cpython-311.pyc
 python_lib/ptb_src/ptb/util/math/__pycache__/stat.cpython-311.pyc
 python_lib/ptb_src/ptb/util/osim/__pycache__/__init__.cpython-311.pyc
 python_lib/ptb_src/ptb/util/osim/__pycache__/osim_store.cpython-311.pyc
+python_lib/ptb_src/ptb/test/opensim.log
