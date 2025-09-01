@@ -7,7 +7,8 @@ import xml.dom.minidom
 
 import matplotlib.pyplot as plt
 import numpy as np
-import csv
+import pandas as pd
+import copy
 import opensim as om
 import subprocess
 from opensim import InverseKinematicsTool
@@ -17,6 +18,8 @@ from ptb.util.math.filters import Butterworth
 from ptb.util.math.transformation import Cloud
 from scipy import interpolate
 from scipy.signal import find_peaks
+
+
 
 
 class OsimModel:
@@ -50,6 +53,7 @@ class OsimModel:
 
     def ground(self):
         return self.osim.getGround()
+
 
 
 class Body:

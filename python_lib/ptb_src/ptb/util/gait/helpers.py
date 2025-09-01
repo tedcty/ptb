@@ -1,17 +1,22 @@
-from ptb.util.gait.opsim import OsimModel
 from opensim.simbody import Vector
+import opensim as osm
 import pandas as pd
 import copy
 import numpy as np
 
+from ptb.util.osim.osim_store import OSIMStorage
+from ptb.util.io.mocap.file_formats import TRC
+from ptb.util.gait.opsim import OsimModel
+
 
 class OsimHelper:
-    def __init__(self, model_path: str):
+    def __init__(self, model_path: str, custom_geometry_path=r"C:\OpenSim 4.5\Geometry"):
         """
         This is a helper for osim model gait2392. It may work for other models but not tested.
         :param model_path: model file path
         """
         # set up helper
+        osm.ModelVisualizer.addDirToGeometrySearchPaths(custom_geometry_path)
         self.osim_model = OsimModel(model_path)
         cn = self.osim_model.osim.getStateVariableNames()
         self.state_variable_names = [cn.get(c) for c in range(0, cn.getSize())]
@@ -91,3 +96,51 @@ class OsimHelper:
             self.osim_model.osim.setStateVariableValues(self.osim_model.state, vx1)
             self.osim_model.osim.assemble(self.osim_model.state)
             self.update()
+
+    def export_marker_data_from_motion(self, mot_path):
+        """
+        This is a helper method exports model markers to TRC based on motion file (mot or sto)
+        :param mot_path: model file path
+        """
+        k0 = copy.deepcopy(self.markerset)
+        idx = 1
+        index_m = {}
+        columns = ['Frame#', 'Time']
+        for c in k0.columns:
+            index_m[c] = idx
+            columns.append("{1}_X{0}".format(index_m[c], c))
+            columns.append("{1}_Y{0}".format(index_m[c], c))
+            columns.append("{1}_Z{0}".format(index_m[c], c))
+            idx += 1
+
+        m = OSIMStorage.read(mot_path)
+        frame_rate = int(1 / m.store.dt)
+
+        frames = []
+        for i in range(0, m.store.data.shape[0]):
+            joint = pd.Series(data=m.store.data[i, :], index=m.store.column_labels)
+            self.set_joints(joint)
+            frames.append(copy.deepcopy(self.markerset))
+
+        marker_df = np.zeros([len(frames), len(columns)])
+        for i in range(0, len(frames)):
+            marker_df[i, 0] = i + 1
+            marker_df[i, 1] = i * 1.0 / frame_rate
+            frame = frames[i]
+            for j in range(0, frame.shape[1]):
+                st = j * 3 + 2
+                en = st + 3
+                marker_df[i, st: en] = frame.iloc[:, j].to_numpy()
+                pass
+            pass
+
+        df = pd.DataFrame(data=marker_df, columns=columns)
+        trc = TRC(df)
+        trc.headers['DataRate'] = frame_rate
+        trc.headers['CameraRate'] = frame_rate
+        trc.headers['OrigDataRate'] = frame_rate
+        trc.headers['NumFrames'] = len(frames)
+        trc.headers['OrigNumFrames'] = len(frames)
+        trc.update()
+        out_file = "{0}.trc".format(mot_path[:mot_path.rindex('.')])
+        trc.write(out_file)
