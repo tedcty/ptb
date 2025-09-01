@@ -5,6 +5,9 @@ import json
 import struct
 import time
 import zipfile
+import gzip
+import pickle
+
 from xml.dom import minidom
 from copy import deepcopy
 from enum import Enum
@@ -572,6 +575,26 @@ class StorageIO(object):
             return self.info['dt']
         except KeyError:
             self.find_dt(StorageType.mot)
+
+class Kirby:
+    def __init__(self, data):
+        """
+        This helper object compresses/ decompress other objects and export and load it as a gzip file
+        """
+        self.data = data
+
+    @staticmethod
+    def load(file_pathx):
+        with gzip.open(file_pathx, "rb") as fx:
+            loaded_data = pickle.load(fx)
+        return loaded_data
+
+    def export(self, file_pathx):
+        with gzip.open(file_pathx, 'wb', compresslevel=9) as fx:
+            pickle.dump(self, fx)
+        pass
+
+
 
 
 class Bapple:
