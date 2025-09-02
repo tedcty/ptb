@@ -11,7 +11,7 @@ conda install -y -c opensim-org opensim
 
 Python 3.10 or above
 
-Packages: 'pandas', 'scipy', 'numpy', 'scikit-learn', 'Pillow', 'vtk', 'PyQt6', 'tsfresh'
+Packages: 'pandas', 'scipy', 'numpy', 'scikit-learn', 'Pillow', 'vtk', 'PySide6', 'tsfresh'
 
 ## Supported Data formats
 ### Mocap
