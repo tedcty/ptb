@@ -11,9 +11,12 @@ from ptb.core import Yatsdo
 from ptb.util.io.mocap.low_lvl import c3d
 
 v = np.__version__[0]
-nan = np.NaN
-if int(v)>=2:
+if int(v) >= 2:
     nan = np.nan
+else:
+    nan = np.NaN
+
+
 
 class TRC(Yatsdo):
 
