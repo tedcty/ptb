@@ -10,6 +10,10 @@ from scipy.spatial.transform import Rotation
 from ptb.core import Yatsdo
 from ptb.util.io.mocap.low_lvl import c3d
 
+v = np.__version__[0]
+nan = np.NaN
+if int(v)>=2:
+    nan = np.nan
 
 class TRC(Yatsdo):
 
@@ -72,9 +76,9 @@ class TRC(Yatsdo):
                 try:
                     dd.append(float(m))
                 except ValueError:
-                    dd.append(np.NaN)
+                    dd.append(nan)
             while len(dd) < cols:
-                dd.append(np.NaN)
+                dd.append(nan)
             data.append(dd)
         rows = len(data)
         np_data = np.zeros([rows, cols])
@@ -242,7 +246,7 @@ class TRC(Yatsdo):
                     p = points[j - 1, 0:3]
                     for e in errors:
                         if e == -1:
-                            p = np.asarray([np.NaN, np.NaN, np.NaN])
+                            p = np.asarray([nan, nan, nan])
                             break
                     markers[marker_labels[j]].append(p)
                 if exportas_text:
