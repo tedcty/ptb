@@ -23,3 +23,6 @@ OBJ, STL, Ply, Vtk
 
 Setup
 For using the PTB: * It can be set up using the wheel in the dist folder, which will install ptb into your Python environment.
+
+# Tips and Tricks
+For tips and tricks curated by the (Neuro -) Musculoskeletal Modelling Group, you can go to our [wiki](https://github.com/tedcty/mmg-doco/wiki), look up the Don't Panic Series.
