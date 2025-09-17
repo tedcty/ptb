@@ -12,6 +12,7 @@ ptb/ssm/generate.py
 ptb/ssm/processing.py
 ptb/test/__init__.py
 ptb/test/c3d_test.py
+ptb/test/trc_test.py
 ptb/util/__init__.py
 ptb/util/data.py
 ptb/util/gait.py

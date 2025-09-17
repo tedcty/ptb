@@ -109,6 +109,14 @@ class TRC(Yatsdo):
         # trc.write("G:/Shared drives/Rocco Hip Replacement Study/01/Pre-op/Sit00a.trc")
         return trc
 
+    @staticmethod
+    def create_from_panda_dataframe(df, filename):
+        np_data = df.to_numpy()
+        data_headings = [c for c in df.columns]
+        trc = TRC(np_data, data_headings, filename, fill_data=False)
+        trc.update()
+        return trc
+
     def get_samples_as_trc(self, time_points, filter="*"):
         subset = self.get_samples(time_points, assume_time_first_col=False, as_pandas=True)
         trc = copy.deepcopy(self)
