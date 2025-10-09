@@ -22,7 +22,7 @@ class CommonSymbols(Enum):
     MINIDISC = ('💽', u"\U0001F4BD", "seguisym")
 
 def milli():
-    date = datetime.now(UTC) - datetime(1970, 1, 1)
+    date = datetime.now(UTC).replace(tzinfo=None) - datetime(1970, 1, 1)
     seconds = (date.total_seconds())
     milliseconds = round(seconds * 1000)
     return milliseconds
