@@ -1,4 +1,5 @@
 from enum import Enum
+from datetime import datetime, UTC
 
 class CommonSymbols(Enum):
     Degrees = ('°', u'\u00B0', 'DejaVuSans')
@@ -19,3 +20,9 @@ class CommonSymbols(Enum):
     set_square = ('📐', u"\U0001F4D0", 'seguisym')
     computer = ('💻', u"\U0001F4BB", 'seguisym')
     MINIDISC = ('💽', u"\U0001F4BD", "seguisym")
+
+def milli():
+    date = datetime.now(UTC) - datetime(1970, 1, 1)
+    seconds = (date.total_seconds())
+    milliseconds = round(seconds * 1000)
+    return milliseconds
