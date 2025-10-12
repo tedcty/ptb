@@ -35,6 +35,14 @@ class OpenFiles(QFileDialog):
             return ret[0]
         return ret
 
+    def get_save_file(self, file_filter='Text (*.txt)'):
+        self.setNameFilter(file_filter)
+        self.setFileMode(QFileDialog.FileMode.AnyFile)
+        ret = self.__open__up__()
+        if ret is not None:
+            return ret[0]
+        return ret
+
     def get_dir(self):
         self.setFileMode(QFileDialog.FileMode.Directory)
         ret = self.__open__up__()
