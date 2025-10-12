@@ -33,7 +33,7 @@ def date_utcnow():
     return datetime.now(timezone.utc)
 
 def milli():
-    date = date_utcnow() - datetime(1970, 1, 1)
+    date = date_utcnow().replace(tzinfo=None) - datetime(1970, 1, 1)
     seconds = (date.total_seconds())
     milliseconds = round(seconds * 1000)
     return milliseconds
