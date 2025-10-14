@@ -57,9 +57,13 @@ class PCAModel(object):
         mx = pcad.get_covariance()
         # Compute singular value decomposition C = U * S * V.T (V.T == vt)
         u, s, vt = np.linalg.svd(mx)
+        r = np.matmul(vt.T, u.T)
+        if np.linalg.det(r) < 0:
+            vt[-1, :] *= -1  # Invert the last column of Vt
+            r = np.dot(vt.T, u.T)
 
         # Compute rotation matrix R = V * U.T
-        r = np.matmul(vt.T, u.T)
+
         mx = PCAModel.calculate_eig_and_sort_static(mx)
         mx = np.transpose(mx)
         p = PCAModel
