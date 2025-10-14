@@ -55,10 +55,15 @@ class PCAModel(object):
         # Transformation with dimension reduction
         zt = pcad.fit_transform(x0)
         mx = pcad.get_covariance()
+        # Compute singular value decomposition C = U * S * V.T (V.T == vt)
+        u, s, vt = np.linalg.svd(mx)
+
+        # Compute rotation matrix R = V * U.T
+        r = np.matmul(vt.T, u.T)
         mx = PCAModel.calculate_eig_and_sort_static(mx)
         mx = np.transpose(mx)
         p = PCAModel
-        p.transformation = mx
+        p.transformation = r
         p.transformed_data = zt
         return p
 
