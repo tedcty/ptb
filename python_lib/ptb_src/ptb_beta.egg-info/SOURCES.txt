@@ -22,6 +22,8 @@ ptb/util/gait/analysis.py
 ptb/util/gait/defaults.py
 ptb/util/gait/helpers.py
 ptb/util/gait/opsim.py
+ptb/util/general_helpers/__init__.py
+ptb/util/general_helpers/meshlab.py
 ptb/util/io/__init__.py
 ptb/util/io/helper.py
 ptb/util/io/mesh.py
