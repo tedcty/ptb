@@ -8,7 +8,7 @@ class OpenFiles(QFileDialog):
         self.setWindowTitle(title)
         # options = QFileDialog.Options()
         # options |= QFileDialog.Option.DontUseNativeDialog
-        self.setOption(QFileDialog.Option.DontUseNativeDialog)
+        self.setOption(QFileDialog.Option.DontUseNativeDialog, True)
         #self.setOption(options)
         comb0 = self.findChild(QComboBox, "lookInCombo")
         comb0.setEditable(True)
@@ -40,7 +40,6 @@ class OpenFiles(QFileDialog):
         self.setNameFilter(file_filter)
         self.setWindowTitle("Save File")
         self.setFileMode(QFileDialog.FileMode.AnyFile)
-        self.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
         self.setLabelText(QFileDialog.DialogLabel.Accept, "Save")
         ret = self.__open__up__()
         if ret is not None:
