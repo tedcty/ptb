@@ -12,7 +12,7 @@ exclude = ["archive*", "resources*"]
 
 [project]
 name = "ptb_beta"
-version = "0.3.17"
+version = "0.3.18"
 authors = [
   { name="Ted Yeung, Thorben Pauli, Isabella Murrell, Homayoon Zarshenas", email="tyeu008@aucklanduni.ac.nz"},
 ]

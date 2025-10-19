@@ -39,6 +39,7 @@ class OpenFiles(QFileDialog):
     def get_save_file(self, file_filter='Text (*.txt)'):
         self.setNameFilter(file_filter)
         self.setFileMode(QFileDialog.FileMode.AnyFile)
+        self.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
         self.setLabelText(QFileDialog.DialogLabel.Accept, "Save")
         ret = self.__open__up__()
         if ret is not None:
