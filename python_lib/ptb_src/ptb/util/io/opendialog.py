@@ -6,9 +6,10 @@ class OpenFiles(QFileDialog):
     def __init__(self, parent=None, title="Open Files"):
         super().__init__(parent)
         self.setWindowTitle(title)
-        options = QFileDialog.Options()
-        options |= QFileDialog.Option.DontUseNativeDialog
-        self.setOption(options)
+        # options = QFileDialog.Options()
+        # options |= QFileDialog.Option.DontUseNativeDialog
+        self.setOption(QFileDialog.Option.DontUseNativeDialog)
+        #self.setOption(options)
         comb0 = self.findChild(QComboBox, "lookInCombo")
         comb0.setEditable(True)
         line0 = comb0.lineEdit()
@@ -38,6 +39,7 @@ class OpenFiles(QFileDialog):
     def get_save_file(self, file_filter='Text (*.txt)'):
         self.setNameFilter(file_filter)
         self.setFileMode(QFileDialog.FileMode.AnyFile)
+        self.setLabelText(QFileDialog.DialogLabel.Accept, "Save")
         ret = self.__open__up__()
         if ret is not None:
             return ret[0]
