@@ -351,7 +351,10 @@ class StorageIO(object):
             point_labels = [a.strip() for a in reader.point_labels]
             rate_diff = int(reader.analog_rate / reader.point_rate)
             analog_group = reader.groups.get('ANALOG')
-            analog_unit = analog_group.params['UNITS'].string_array
+            try:
+                analog_unit = analog_group.params['UNITS'].string_array
+            except KeyError:
+                analog_unit = []
             if len (analog_labels) == len(analog_unit):
                 analog_units = {analog_labels[a]:analog_unit[a] for a in range(0, len(analog_unit))}
             ret = {'analog_channels_label': analog_labels,
