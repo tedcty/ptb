@@ -261,7 +261,61 @@ class VTKMeshUtl(Enum):
         return ret
 
     @staticmethod
-    def sub_mesh(node_id_list, polydata, debug = False, try_speed_up=2):
+    def sub_mesh_by_node_ids(polydata, node_ids_to_select):
+        """
+        Extracts a submesh (vtkPolyData) containing all cells connected to a
+        given list of node (point) IDs from an input vtkPolyData.
+
+        Args:
+            polydata (vtkPolyData): The input polygonal mesh.
+            node_id_list (list or tuple of int): A list of 0-based point/node IDs.
+
+        Returns:
+            vtkPolyData: The extracted submesh.
+        """
+        # 1. Prepare the list of IDs as a vtkIdTypeArray
+        ids = vtk.vtkIdTypeArray()
+        for id_ in node_ids_to_select:
+            ids.InsertNextValue(id_)
+
+        # 2. Create a vtkSelectionNode
+        selection_node = vtk.vtkSelectionNode()
+        selection_node.SetContentType(vtk.vtkSelectionNode.INDICES)  # We use 0-based VTK indices
+        selection_node.SetFieldType(vtk.vtkSelectionNode.POINT)  # The indices refer to points/nodes
+        selection_node.SetSelectionList(ids)
+
+        # CRUCIAL: Tell the selection to also include the cells connected to the selected points
+        # This property ensures the polygons, lines, and vertices are extracted.
+        selection_node.GetProperties().Set(vtk.vtkSelectionNode.CONTAINING_CELLS(), 1)
+        #
+
+        # 3. Create a vtkSelection object
+        selection = vtk.vtkSelection()
+        selection.AddNode(selection_node)
+
+        # 4. Use vtkExtractSelection to perform the extraction
+        extract_selection = vtk.vtkExtractSelection()
+        extract_selection.SetInputData(0, polydata)
+        extract_selection.SetInputData(1, selection)
+        extract_selection.Update()
+
+        # The output is a vtkUnstructuredGrid, which is not what we want for a "submesh"
+        # of a vtkPolyData (which implies a pure polygonal mesh).
+
+        # 5. Convert vtkUnstructuredGrid output back to vtkPolyData
+        geometry_filter = vtk.vtkGeometryFilter()
+        geometry_filter.SetInputData(extract_selection.GetOutput())
+        geometry_filter.Update()
+
+        return geometry_filter.GetOutput()
+
+    @staticmethod
+    def sub_mesh(node_id_list, polydata):
+        return VTKMeshUtl.sub_mesh_by_node_ids(polydata, node_id_list)
+
+    @staticmethod
+    def sub_mesh_old(node_id_list, polydata, debug = False, try_speed_up=2):
+        print("method will be deprecated in the next version 0.4.0 or later")
         mesh_data_copy = vtk.vtkPolyData()
         mesh_data_copy.DeepCopy(polydata)
         cell_data = mesh_data_copy.GetPolys()
