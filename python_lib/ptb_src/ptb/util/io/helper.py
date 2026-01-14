@@ -355,6 +355,12 @@ class StorageIO(object):
                 analog_unit = analog_group.params['UNITS'].string_array
             except KeyError:
                 analog_unit = []
+            except UnicodeDecodeError:
+                bs = []
+                for a in analog_group.params['UNITS'].bytes_array:
+                    b = a.decode('latin-1').strip()
+                    bs.append(b)
+                analog_unit = bs
             if len (analog_labels) == len(analog_unit):
                 analog_units = {analog_labels[a]:analog_unit[a] for a in range(0, len(analog_unit))}
             ret = {'analog_channels_label': analog_labels,
