@@ -1,7 +1,9 @@
 from shutil import copyfile
 import os
+import platform
 # import json
 import toml
+import subprocess
 
 if __name__ == '__main__':
     """
@@ -66,7 +68,13 @@ if __name__ == '__main__':
         copyfile('./dist/'+i, './archive/dist/'+i)
         os.remove('./dist/'+i)
 
-    os.system('python -m build ./')
+    sys_version = platform.python_version()
+    print(sys_version)
+
+    if sys_version.startswith('3.12') or sys_version.startswith('3.13'):
+        subprocess.run(["python", "-m", 'build'])
+    else:
+        os.system('python -m build ./')
     with open("./dist/latest.txt", "w") as outfile:
         file = [w for w in os.listdir("./dist/") if w.endswith('.whl')]
         outfile.write(file[0])
