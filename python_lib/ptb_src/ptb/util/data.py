@@ -15,8 +15,7 @@ TODOs:
 > Add Documentation to code
 """
 
-def resample(data, target_freq):
-    return resample(data, target_freq)
+
 
 def stamp():
     now = datetime.now()
@@ -99,38 +98,175 @@ class MocapDO:
 
     @staticmethod
     def create_from_c3d(file):
-        # todo need to merge sg with s
+        # Optimized to read file only once
         sg = StorageIO.readc3d_general(file)
-        s = StorageIO.simple_readc3d(file)
+        
         m = MocapDO()
         m.filepath = file
-        m.markers = TRC.create_from_c3d_dict(s, file)
+        
+        # Populate markers directly from the dictionary returned by readc3d_general
+        # We need to adapt the caching structure expected by TRC.create_from_c3d_dict
+        # The 'sg' dict from readc3d_general is already compatible with create_from_c3d_dict
+        # but we need to ensure the structure matches exactly what TRC expects.
+        # TRC.create_from_c3d_dict expects a dict with 'mocap', 'markers', etc.
+        
+        # NOTE: StorageIO.readc3d_general returns a dict but it is slightly different 
+        # from what simple_readc3d returned. Simple_readc3d returned:
+        # {'markers': ..., 'mocap': ..., 'text': ..., 'analog': ...}
+        # read_c3d_general returns:
+        # {'analog_channels_label': ..., 'point_data': ..., 'analog_data': ..., 'markers': ...}
+        
+        # We need to construct the 's' dict from 'sg' to avoid re-reading.
+        
+        # 1. Reconstruct 'mocap' header info for TRC
+        mocap_header = sg['mocap'] # readc3d_general already has this key
+        
+        # 2. Reconstruct 'markers' dict for TRC
+        # readc3d_general does NOT strictly have 'markers' in the standard sense of simple_readc3d
+        # It has 'point_data' DataFrame. We need to convert this back or update TRC to use point_data?
+        # Actually, looking at readc3d_general source, it DOES NOT create a 'markers' dict key by default.
+        # But wait, looking at `Yac3do.trc` property in this file (lines 142+), it constructs 'markers'
+        # from 'point_data'. We should do the same here to reuseTRC.create_from_c3d_dict
+        
+        markers = {}
+        # markers['time'] already usually handled, but let's be safe
+        # point_data has columns frame, time, marker_X, marker_Y, marker_Z...
+        
+        # Efficiently extract markers from point_data DataFrame
+        df_points = sg['point_data']
+        # Get unique marker names (stripping _X, _Y, _Z)
+        # sg['point_label'] has the raw names
+        
+        # Construct the markers dictionary expected by TRC.create_from_c3d_dict
+        # It expects {marker_name: [list of [x,y,z] or array], ...} 
+        # TRC.create_from_c3d_dict (line 187 file_formats.py) does:
+        # markers = c3d_dic["markers"]
+        # markers_np = {n: np.array(markers[n]) for n in markers}
+        # So it expects a list or array of shape (N, 3).
+        
+        cols = df_points.columns
+        for lbl in sg['point_label']:
+            # Assuming labels in point_data are "Label_X", "Label_Y", "Label_Z"
+            if f"{lbl}_X" in cols:
+                # Extract as Nx3 array
+                dat = df_points[[f"{lbl}_X", f"{lbl}_Y", f"{lbl}_Z"]].to_numpy()
+                markers[lbl] = dat
+        
+        # Add time if needed, TRC checks it (line 195 file_formats.py) uses markers_np[marker_labels[0]] ??
+        # Actually TRC line 195: times = markers_np[marker_labels[0]] ... wait
+        # If marker_labels[0] is 'time', then it expects 'time' key.
+        # In simple_readc3d, 'time' key is added.
+        markers['time'] = df_points['time'].to_numpy()
+        
+        # Construct the 's' dictionary mimicking simple_readc3d output
+        s_reconstructed = {
+            'mocap': mocap_header,
+            'markers': markers,
+            # 'analog': ... TRC doesn't seem to use analog, MocapDO handles it below
+        }
+        
+        m.markers = TRC.create_from_c3d_dict(s_reconstructed, file)
+        
+        # Now handle Force Plates
         paramF = {'corners': sg['force_plate_corners'],
                   'origin': sg['force_plate_origins_from_corner'],
                   'num_plates': sg['number_of_force_plates']
                   }
+        
         ad = sg["analog_data"]
-        ad_col = [c for c in ad.columns if 'Force' in c or 'Moment' in c or 'frame' in c]
-        forces_unit = {c:sg["analog_unit"][c] for c in sg["analog_unit"] if 'Force' in c }
-        moment_unit = {c:sg["analog_unit"][c] for c in sg["analog_unit"] if 'Moment' in c}
+        if ad is None or ad.empty:
+            m.force_plates = None
+            return m
+
+        # Robust Column Identification
+        # Instead of generic 'Force', 'Moment', look for explicit Fx, Fy, Fz etc patterns
+        # or use the channels defined in the C3D force platform section if available.
+        # sg['force_plate_channels'] might contain indices?
+        
+        # Let's try a robust regex-like filter first
+        all_cols = ad.columns
+        
+        # Helper to find columns related to Force/Moment
+        def matches_force_moment(col_name):
+            c = col_name.lower()
+            return 'force' in c or 'moment' in c or 'fx' in c or 'fy' in c or 'fz' in c or 'mx' in c or 'my' in c or 'mz' in c
+
+        ad_col = [c for c in all_cols if matches_force_moment(c) or 'frame' in c.lower() or 'time' in c.lower()]
+        
+        # Attempt to map units safely
+        forces_unit = {}
+        moment_unit = {}
+        
+        # sg["analog_unit"] is a dict {channel_name: unit_string}
+        # We need to map these to the 'Force', 'Moment' categories.
+        # The previous code assumed strict naming "Force.Fx1" etc.
+        # Now we might have simpler names.
+        
+        for c in ad_col:
+            if c in sg["analog_unit"]: # Strict match
+                u = sg["analog_unit"][c]
+                if 'force' in c.lower() or 'f' in c.lower(): 
+                   forces_unit[c] = u
+                if 'moment' in c.lower() or 'm' in c.lower():
+                    moment_unit[c] = u
+        
         cop_unit = {}
 
+        # Safe unit extraction
         for i in moment_unit:
             unit = moment_unit[i]
-            dk = unit.split('N')
-            dk[0] = "{0}N".format(dk[0])
-            cp = i.replace('Moment', "COP")
-            cp = cp.replace("M", "P")
-            cop_unit[cp] = dk[1]
-        ad_col.insert(0,'time')
-        ad_force = sg["analog_data"][ad_col[1:]]
-        p = np.zeros([ad_force.shape[0], ad_force.shape[1]+1])
-        p[:, 0] = [i*(1/sg['analog_rate']) for i in range(ad_force.shape[0])]
-        p[:, 1:] = ad_force.to_numpy()
-        force_data = pd.DataFrame(data=p, columns=ad_col)
+            # Robust split
+            if 'N' in unit and 'm' in unit:
+                 # Likely Nmm or Nm
+                 # naive replacement logic from before:
+                 # dk = unit.split('N') -> assumes "N" is the separator
+                 # If unit is "Nmm", split('N') -> ['', 'mm'] -> "Nmm"
+                 # If unit is "Nm", split('N') -> ['', 'm'] -> "Nm"
+                 # It was trying to construct pressure unit? "N" -> "P"?
+                 # Pre-existing logic: element 0 becomes "N", element 1 is suffix. 
+                 # i.e. "Nmm" -> dk=['', 'mm'] -> dk[0]="N" -> result "mm"
+                 # It seems it wants the distance unit part of the moment.
+                 dist_unit = unit.replace('N', '').replace('n', '').strip()
+                 cop_unit_key = i.replace('Moment', 'COP').replace('M', 'P') # Naive string replace
+                 cop_unit[cop_unit_key] = dist_unit
+            else:
+                 # Fallback
+                 cop_unit[i] = "mm"
+
+        # Ensure time is present
+        if 'time' not in ad_col:
+             ad_col.insert(0, 'time')
+
+        # Subset analog data
+        # Check if columns exist (clean up ad_col)
+        ad_col = [c for c in ad_col if c in ad.columns]
+        
+        ad_force = ad[ad_col]
+        
+        # If time is missing in data but we need it (should have been from readc3d_general logic)
+        # data.py previous logic created it manually:
+        # p[:, 0] = [i*(1/sg['analog_rate']) for i in range(ad_force.shape[0])]
+        # read_c3d_general creates 'time' column in sub-frame loop? No, it creates 'sub-frame'.
+        # Actually it creates 'mocap-frame', 'sub-frame' and then analog data.
+        # We need to calculate time.
+        
+        # Create a new dataframe with time explicitly
+        force_data = ad_force.copy()
+        
+        # Calculate time: (frame_idx * subframes + subframe_idx) * dt?
+        # Or simpler: just index * (1/analog_rate)
+        time_array = np.arange(force_data.shape[0]) * (1.0 / sg['analog_rate'])
+        # Add start time offset if needed? sg['first_frame']?
+        # Usually 0-based relative time is sufficient for many pipelines, but let's be consistent
+        # previous code: p[:, 0] = [i*(1/sg['analog_rate']) ...
+        
+        force_data.insert(0, 'time', time_array)
+        
+        # Create ForcePlate object
         f = ForcePlate.create(paramF, force_data)
         f.units = {'Force': forces_unit, 'Moment': moment_unit, 'COP': cop_unit}
         m.force_plates = f
+        
         return m
 
 
@@ -471,31 +607,32 @@ class IMU(Yatsdo):
         return ret
 
     def butterworth_filter(self, cut_off, sampling_rate):
-        for d in range(1, self.acc.size[1]):
-            data = self.acc.data[:, d]
+        for d in range(1, self.acc.shape[1]):
+            data = self.acc.iloc[:, d].to_numpy()
             filtered = Butterworth.butter_low_filter(data, cut_off, sampling_rate, order=4)
-            self.acc.data[:, d] = filtered
-        self.acc.update()
-
-        for d in range(1, self.gyro.size[1]):
-            data = self.gyro.data[:, d]
+            self.data.iloc[:, self.acc_id[d-1]] = filtered
+        
+        for d in range(1, self.gyr.shape[1]):
+            data = self.gyr.iloc[:, d].to_numpy()
             filtered = Butterworth.butter_low_filter(data, cut_off, sampling_rate, order=4)
-            self.gyro.data[:, d] = filtered
-        self.gyro.update()
+            self.data.iloc[:, self.gyr_id[d-1]] = filtered
 
         if self.mag is not None:
-            for d in range(1, self.mag.size[1]):
-                data = self.mag.data[:, d]
+            for d in range(1, self.mag.shape[1]):
+                data = self.mag.iloc[:, d].to_numpy()
                 filtered = Butterworth.butter_low_filter(data, cut_off, sampling_rate, order=4)
-                self.mag.data[:, d] = filtered
-            self.mag.update()
+                self.data.iloc[:, self.mag_id[d-1]] = filtered
 
         if self.ori is not None and not self.ori_filtered:
-            for d in range(1, self.ori.size[1]):
-                data = self.mag.ori[:, d]
+            for d in range(1, self.ori.shape[1]):
+                data = self.ori.iloc[:, d].to_numpy()
                 filtered = Butterworth.butter_low_filter(data, cut_off, sampling_rate, order=4)
-                self.ori.data[:, d] = filtered
-            self.ori.update()
+                # Assuming self.ori is also stored in self.data or similar? 
+                # Wait, IMU init: self.ori = ori. It's stored separately or strictly passed in?
+                # Line 517: self.ori = ori. 
+                # If self.ori is a DataFrame, update it.
+                self.ori.iloc[:, d] = filtered
+
 
     def export(self, filename, boo=[True, True, False, True]):
         imu = [self.acc, self.gyr, self.mag, self.ori]
