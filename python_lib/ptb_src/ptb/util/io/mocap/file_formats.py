@@ -184,7 +184,7 @@ class TRC(Yatsdo):
         trc_header[MocapFlags.OrigDataStartFrame.value] = header.first_frame
         trc_header[MocapFlags.OrigDataRate.value] = header.frame_rate
         trc_header[MocapFlags.OrigNumFrames.value] = header.last_frame
-        markers = c3d_dic["markers"]
+        markers = {x: c3d_dic["markers"][x] for x in c3d_dic["markers"] if x is not 'time'}
         markers_np = {n: np.array(markers[n]) for n in markers}
         marker_labels = [m for m in markers_np]
         trc_header[MocapFlags.NumMarkers.value] = len(markers) - 1
@@ -193,13 +193,16 @@ class TRC(Yatsdo):
         inx = 1
         frames_block[:, 0] = [int(n + 1) for n in range(0, header.last_frame)]
         times = markers_np[marker_labels[0]]
-        indx = 0
-        if np.nanmin(markers_np[marker_labels[0]]) < 0:
-            for t in range(0, times.shape[0]):
-                indx = t
-                if times[t] >= 0.0:
-                    break
-            times = times[indx:]
+        try:
+            indx = 0
+            if np.nanmin(markers_np[marker_labels[0]]) < 0:
+                for t in range(0, times.shape[0]):
+                    indx = t
+                    if times[t] >= 0.0:
+                        break
+                times = times[indx:]
+        except ValueError:
+            times = c3d_dic["markers"]['time']
         frames_block[:, 1] = times
         markers_set = {}
         for m in range(1, len(marker_labels)):

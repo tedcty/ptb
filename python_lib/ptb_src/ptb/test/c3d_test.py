@@ -37,8 +37,8 @@ if __name__ == "__main__":
 
     print("osim")
     omot = OSIMStorage.read("X:/SFTIWearable/Squats_ptb.mot")
-    id_tool = osim.InverseDynamicsTool("I:/ID_setup.xml")
-    id_tool.run()
+    # id_tool = osim.InverseDynamicsTool("I:/ID_setup.xml")
+    # id_tool.run()
     pass
     # header = OSIMStorage.simple_header_template()
     # header[HeadersLabels.trial] = os.path.split(f)[1][:os.path.split(f)[1].rindex('.')]

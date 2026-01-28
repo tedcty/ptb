@@ -416,7 +416,13 @@ class StorageIO(object):
                     xyz = points[:, :3]
                     point_data[(i - 1), :] = xyz.reshape([1, ret['num_points'] * 3])
                 frames.append({"id": i, "points": points, "analog": analog})
-            df = pd.DataFrame(data=point_data, columns=expanded_labels)
+
+            times = [d*(1/ret['point_rate']) for d in range(0, point_data.shape[0])]
+            pt_data = np.zeros([point_data.shape[0], point_data.shape[1]+1])
+            pt_data[:, 0] = times
+            pt_data[:, 1:] = point_data
+            expanded_labels.insert(0, 'time')
+            df = pd.DataFrame(data=pt_data, columns=expanded_labels)
             cols_analog = ["mocap-frame", "sub-frame"]
             for c in ret['analog_channels_label']:
                 cols_analog.append(c)
