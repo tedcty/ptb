@@ -32,6 +32,24 @@ class OSIMForcePlate(Enum):
     @staticmethod
     def map_from_c3d(m, p:int):
         if m == OSIMForcePlate.ground_force:
+            # Added support for list of alternative names
+            # But the caller usually passes an index 'p'.
+            # MocapDO fixed implementation does not rename columns to Force.Fx{p} strictly if they weren't like that.
+            # However, MocapDO assumes existing column names are preserved from C3D.
+            # OSIMForcePlate needs to handle what MocapDO provides.
+            # MocapDO was updated to create ForcePlate.create(paramF, force_data).
+            # ForcePlate.sort_plates (in file_formats.py) expects "Force.Fx{0}" format effectively?
+            # Let's check ForcePlate in file_formats.py ... 
+            # Wait, ForcePlate.sort_plates re-maps columns if they are not in standard format?
+            # No, looking at file_formats.py line 602: mapper = pd.DataFrame...
+            # It expects specific column names to exist! 
+            # "Force.Fx{0}".format(i)
+            # This means my fix in MocapDO might fail if I don't rename columns to this standard!
+            
+            # Additional Fix: I need to rename columns in MocapDO before passing to ForcePlate.create
+            # OR I need to update ForcePlate.sort_plates to be robust. 
+            # Updating ForcePlate seems cleaner.
+            
             return {'v': ['Force.Fx{0}'.format(p), 'Force.Fy{0}'.format(p), 'Force.Fz{0}'.format(p)],
                     'p': ['COP.Px{0}'.format(p), 'COP.Py{0}'.format(p),'COP.Pz{0}'.format(p)]}
         if m == OSIMForcePlate.ground_torque:

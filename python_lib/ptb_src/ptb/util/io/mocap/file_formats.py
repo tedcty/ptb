@@ -599,16 +599,101 @@ class ForcePlate(Yatsdo):
             pass
 
     def sort_plates(self):
+        # Create a copy of data to avoid modifying the original dataframe structure directly if not needed
+        # but we need to identify columns.
+        
+        # We need to map available columns in self.data (mapper) to the expected 
+        # Force.Fx{i} ... schema.
+        
+        # Strategy:
+        # 1. Inspect existing columns.
+        # 2. Try to identify which columns belong to plate i.
+        #    - If "Force.Fx{i}" exists, use it.
+        #    - If "Fx{i}" exists, use it (and maybe rename?).
+        #    - If it's the i-th group of force channels... (risky).
+        # 3. Create a standardized view for self.plate[p].
+
         mapper = pd.DataFrame(data=self.data, columns=self.col_labels)
+        cols_available = mapper.columns.tolist()
+
         for i in range(1, self.num_of_plates + 1):
-            cols = self.col_labels[:3]
-            cols.append("Force.Fx{0}".format(i))
-            cols.append("Force.Fy{0}".format(i))
-            cols.append("Force.Fz{0}".format(i))
-            cols.append("Moment.Mx{0}".format(i))
-            cols.append("Moment.My{0}".format(i))
-            cols.append("Moment.Mz{0}".format(i))
-            self.plate["force_plate_{0}".format(i)] = [i, mapper[cols]]
+            
+            # Define standard expected targets
+            targets = {
+                "Force.Fx": ["Force.Fx{0}".format(i), "Fx{0}".format(i), "FP{0}.Fx".format(i)],
+                "Force.Fy": ["Force.Fy{0}".format(i), "Fy{0}".format(i), "FP{0}.Fy".format(i)],
+                "Force.Fz": ["Force.Fz{0}".format(i), "Fz{0}".format(i), "FP{0}.Fz".format(i)],
+                "Moment.Mx": ["Moment.Mx{0}".format(i), "Mx{0}".format(i), "FP{0}.Mx".format(i)],
+                "Moment.My": ["Moment.My{0}".format(i), "My{0}".format(i), "FP{0}.My".format(i)],
+                "Moment.Mz": ["Moment.Mz{0}".format(i), "Mz{0}".format(i), "FP{0}.Mz".format(i)],
+            }
+            
+            plate_cols = self.col_labels[:3] # Assuming first 3 are time-related? sub-frame etc.
+            # Actually col_labels[:3] might include time, frame, subframe.
+            # MocapDO fixed inserted 'time' at 0.
+            
+            # Construct standard columns for this plate
+            std_cols = []
+            
+            for key in ["Force.Fx", "Force.Fy", "Force.Fz", "Moment.Mx", "Moment.My", "Moment.Mz"]:
+                found_col = None
+                for search in targets[key]:
+                   # Case insensitive search
+                   for c in cols_available:
+                       if search.lower() == c.lower():
+                           found_col = c
+                           break
+                   if found_col:
+                       break
+                
+                # Fallback: if we simply can't find it, we might be in trouble.
+                # But for now let's append what we found or the default (which will error/nan later if missing)
+                
+                # If found, we want to rename it to the standard key (e.g. Force.Fx1) within the plate's dataframe
+                # so that downstream code (cop calc, osim export) works.
+                standard_name = "{0}{1}".format(key, i)
+                if found_col:
+                    if found_col != standard_name:
+                         # Rename in mapper? Or just track it?
+                         # Creating a new dataframe for the plate is what usually happens below.
+                         pass
+                    std_cols.append(found_col)
+                    # We will need to alias this when creating the plate df
+                else:
+                    # Missing column
+                    print(f"Warning: Could not identify {standard_name} for plate {i}")
+                    std_cols.append(None)
+
+            # Reconstruct the code's expected output structure:
+            # self.plate[...] = [i, subset_dataframe]
+            # The subset dataframe needs columns named strictly: Force.Fx{i}, ...
+            
+            # Extract data
+            data_dict = {}
+            # Add existing base columns (time etc)
+            # The original code took self.col_labels[:3]. 
+            # If we changed MocapDO to insert 'time' at 0, check this assumption.
+            # safe approach: take 'time' if exists.
+            
+            base_cols_names = []
+            for bc in self.col_labels:
+                if 'time' in bc.lower() or 'frame' in bc.lower():
+                     base_cols_names.append(bc)
+            
+            base_df = mapper[base_cols_names].copy()
+            
+            # Now add the force/moment columns, RENAMED to standard
+            standard_suffixes = ["Force.Fx{0}", "Force.Fy{0}", "Force.Fz{0}", "Moment.Mx{0}", "Moment.My{0}", "Moment.Mz{0}"]
+            
+            for j, col_found in enumerate(std_cols):
+                std_name = standard_suffixes[j].format(i)
+                if col_found:
+                    base_df[std_name] = mapper[col_found]
+                else:
+                    base_df[std_name] = 0.0 # Or NaN?
+            
+            self.plate["force_plate_{0}".format(i)] = [i, base_df]
+
         pass
 
     def cop(self, px=None):

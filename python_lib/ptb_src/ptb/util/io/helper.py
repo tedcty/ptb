@@ -516,6 +516,10 @@ class StorageIO(object):
             p = StorageIO.failsafe_omega(filename, delimiter=delimiter)
             if p is None:
                 return None
+        except IndexError:
+            p = StorageIO.failsafe_omega(filename, delimiter=delimiter)
+            if p is None:
+                return None
         col = p.columns
         drops = [c for c in col if 'Unnamed' in c]
         q = p.drop(columns=drops)
