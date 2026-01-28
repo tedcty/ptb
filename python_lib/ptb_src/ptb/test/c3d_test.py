@@ -14,20 +14,21 @@ if __name__ == "__main__":
     # osim_mot.write(w)
     print("read")
     start0 = time.time()
-    f = 'I:/walking_speed_NoAFO_Ella.c3d'
+    # f = 'I:/walking_speed_NoAFO_Ella.c3d'
+    f = 'X:/SFTIWearable/Test/S17/Session/Squats.c3d'
     m = MocapDO.create_from_c3d(f)
     print(time.time() - start0)
     start = time.time()
     m.z_up_to_y_up()
     print("z_to_y {0}".format(time.time() - start))
     start = time.time()
-    m.markers.write('I:/walking_speed_NoAFO_Ella.trc')
+    m.markers.write('X:/SFTIWearable/Squats_test.trc')
     print("write time {0}".format(time.time() - start))
     start = time.time()
-    m.export_opensim_mot_force_file('I:/')
+    m.export_opensim_mot_force_file('X:/SFTIWearable/')
     print("export mot time: {0}".format(time.time() - start))
     start = time.time()
-    trc = TRC.read('I:/walking_speed_NoAFO_Ella.trc')
+    trc = TRC.read('X:/SFTIWearable/Squats_test.trc')
     print("read trc time: {0}".format(time.time() - start))
     start = time.time()
     c = trc.get_samples(trc.x)
@@ -35,7 +36,7 @@ if __name__ == "__main__":
     print("total: {0}".format(time.time() - start0))
 
     print("osim")
-    omot = OSIMStorage.read("I:/walking_speed_NoAFO_Ella_ptb.mot")
+    omot = OSIMStorage.read("X:/SFTIWearable/Squats_ptb.mot")
     id_tool = osim.InverseDynamicsTool("I:/ID_setup.xml")
     id_tool.run()
     pass
