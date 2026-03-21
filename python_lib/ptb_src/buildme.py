@@ -6,13 +6,16 @@ import toml
 import subprocess
 
 if __name__ == '__main__':
+    # Make sure we're in the correct directory regardless of how the script is run
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
     """
     This script builds a wheel and put it in the dist folder
     The dist folder will always have the latest build
     """
 
     # this part of the code automatically update version information in the core.py file
-    with open('pyproject.toml', 'r') as f:
+    with open('./pyproject.toml', 'r') as f:
         config = toml.load(f)
     # info = "class info(Enum):"
     # info += "\tname = \"PTB\""
