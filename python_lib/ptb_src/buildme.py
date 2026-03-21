@@ -10,9 +10,9 @@ if __name__ == '__main__':
     This script builds a wheel and put it in the dist folder
     The dist folder will always have the latest build
     """
-
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
     # this part of the code automatically update version information in the core.py file
-    with open('pyproject.toml', 'r') as f:
+    with open('./pyproject.toml', 'r') as f:
         config = toml.load(f)
     # info = "class info(Enum):"
     # info += "\tname = \"PTB\""
