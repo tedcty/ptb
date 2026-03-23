@@ -75,6 +75,6 @@ if __name__ == '__main__':
         subprocess.run(["python", "-m", 'build'])
     else:
         os.system('python -m build ./')
-    with open("./dist/latest.txt", "w") as outfile:
-        file = [w for w in os.listdir("./dist/") if w.endswith('.whl')]
-        outfile.write(file[0])
+    # with open("./dist/latest.txt", "w") as outfile:
+    #     file = [w for w in os.listdir("./dist/") if w.endswith('.whl')]
+    #     outfile.write(file[0])
