@@ -1,0 +1,7 @@
+pandas
+scipy
+numpy
+vtk
+Pyside6
+tsfresh
+pymeshlab
