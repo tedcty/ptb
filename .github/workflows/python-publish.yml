@@ -30,7 +30,7 @@ jobs:
         run: |
           python -m pip install build toml
           cd python_lib/ptb_src
-          python buildme.py
+          python -m build
 
       - name: Upload distributions
         uses: actions/upload-artifact@v4
