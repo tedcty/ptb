@@ -6,6 +6,13 @@ This is a repository containing useful tools and development of useful tools for
 
 Contributors: Ted Yeung, Isabella Murrell, Homayoon Zarshenas, Thorben Pauli.
 
+## Installation
+**Quick install:**
+
+```bash
+python -m pip install ptb-mmg
+```
+
 ## Requirements
 Opensim (tested on Opensim 4.5):
 conda install -y -c opensim-org opensim
