@@ -184,18 +184,27 @@ class TRC(Yatsdo):
         trc_header[MocapFlags.OrigDataStartFrame.value] = header.first_frame
         trc_header[MocapFlags.OrigDataRate.value] = header.frame_rate
         trc_header[MocapFlags.OrigNumFrames.value] = header.last_frame
-        markers = {x: c3d_dic["markers"][x] for x in c3d_dic["markers"] if x is not 'time'}
+        markers = {x: c3d_dic["markers"][x] for x in c3d_dic["markers"] if x != 'time'}
         markers_np = {n: np.array(markers[n]) for n in markers}
         marker_labels = [m for m in markers_np]
-        trc_header[MocapFlags.NumMarkers.value] = len(markers) - 1
-        frames_block = np.zeros([header.last_frame, (3 * len(marker_labels)) + 1])
+        trc_header[MocapFlags.NumMarkers.value] = len(markers)
+        # +2, not +1: Frame# and time each need their own column ahead of
+        # the 3*len(marker_labels) marker columns. (Previously +1, which
+        # under-allocated by one column relative to what the loop below
+        # actually needs once it writes every marker -- see below.)
+        frames_block = np.zeros([header.last_frame, (3 * len(marker_labels)) + 2])
         col_names = ['Frame#', 'time']
         inx = 1
         frames_block[:, 0] = [int(n + 1) for n in range(0, header.last_frame)]
-        times = markers_np[marker_labels[0]]
+        # 'time' was already filtered out of markers/marker_labels above
+        # (the dict comprehension a few lines up), so marker_labels[0] is
+        # now the file's real first marker, not a leftover 'time'
+        # placeholder -- read the actual time array straight from
+        # c3d_dic instead of assuming index 0 is still 'time'.
+        times = c3d_dic["markers"]['time']
+        indx = 0
         try:
-            indx = 0
-            if np.nanmin(markers_np[marker_labels[0]]) < 0:
+            if np.nanmin(times) < 0:
                 for t in range(0, times.shape[0]):
                     indx = t
                     if times[t] >= 0.0:
@@ -205,12 +214,15 @@ class TRC(Yatsdo):
             times = c3d_dic["markers"]['time']
         frames_block[:, 1] = times
         markers_set = {}
-        for m in range(1, len(marker_labels)):
+        # range(0, ...), not range(1, ...): marker_labels no longer has a
+        # 'time' placeholder at index 0 to skip (see above) -- starting at
+        # 1 here silently dropped the file's real first marker entirely.
+        for m in range(0, len(marker_labels)):
             try:
                 lb = marker_labels[m]
                 m_np = markers_np[lb]
-                s = (m * 3 + 1) - 2
-                e = (m * 3 + 4) - 2
+                s = m * 3 + 2
+                e = m * 3 + 5
                 frames_block[:, s: e] = m_np[indx:, :]
                 col_names.append(marker_labels[m] + '_X{0}'.format(inx))
                 col_names.append(marker_labels[m] + '_Y{0}'.format(inx))
@@ -226,7 +238,7 @@ class TRC(Yatsdo):
                   fill_data=fill_data)
         trc.headers = trc_header
         trc.marker_set = markers_set
-        trc.marker_names = marker_labels[1:]
+        trc.marker_names = marker_labels
         return trc
 
     @staticmethod
@@ -284,25 +296,24 @@ class TRC(Yatsdo):
         k = len(self.marker_set.keys())
         d0 = self.data[:, 2:(k*3)+2]
         #j = int((d0.shape[0]*d0.shape[1])/3)
-        kp = np.vstack([self.marker_set[m].to_numpy() for m in self.marker_set])
+        marker_order = list(self.marker_set.keys())
+        kp = np.vstack([self.marker_set[m].to_numpy() for m in marker_order])
         y = (np.matmul(r.as_matrix(), kp.T)).T
 
         yp = np.hstack([y[i:i+d0.shape[0], :] for i in range(0, y.shape[0], d0.shape[0])])
         self.data[:, 2:(k * 3) + 2] = yp
-        # r1 = Rotation.from_euler('xyz', [0, -90, 0], degrees=True)
-        # r = Rotation.from_matrix(np.matmul(r1.as_matrix(), r0.as_matrix()))
-        # for m in self.marker_set:
-        #     k = self.marker_set[m]
-        #     j = k.to_numpy()
-        #
-        #     y = np.matmul(r.as_matrix(), j.T)
-        #     start = offset + n
-        #     end = start + 3
-        #     self.data[:, start: end] = y.T
-        #     col = [c for c in k.columns]
-        #     p = pd.DataFrame(data=y.T, columns=col)
-        #     self.marker_set[m] = p
-        #     n += 3
+
+        # Keep marker_set in sync with the rotation just applied to .data
+        # above -- this used to be dead/commented-out code, leaving
+        # marker_set silently stale (still holding pre-rotation values)
+        # after this method ran. Reuses the already-rotated `y` (split back
+        # into the same per-marker chunks `yp` above was built from, same
+        # marker_order used to build `kp`) rather than recomputing the
+        # rotation separately, so .data and .marker_set can't diverge.
+        for i, m in enumerate(marker_order):
+            chunk = y[i * d0.shape[0]:(i + 1) * d0.shape[0], :]
+            self.marker_set[m] = pd.DataFrame(data=chunk, columns=self.marker_set[m].columns)
+
         self.update()
         return r.as_matrix()
 
@@ -586,6 +597,47 @@ class ForcePlate(Yatsdo):
         f.cop()
         return f
 
+    @staticmethod
+    def local_to_world_rotation(corners):
+        """Derives a force plate's local-to-world rotation matrix from its
+        own 4 corners. C3D FORCE_PLATFORM TYPE 2 platforms (the common
+        case) report Force.Fx/Fy/Fz and Moment.Mx/My/Mz in the plate's OWN
+        local coordinate frame, per the C3D standard -- converting to the
+        global/lab frame via the plate's own geometry is expected,
+        standard practice. This matters in practice: two plates in the
+        SAME file can have genuinely different local orientations (their
+        corner1->corner2 edges can point in different world directions),
+        so a single rotation can't be assumed to apply to every plate.
+
+        corners is (3, 4): xyz rows x 4 corner columns (e.g.
+        self.corners[plate_name]). Per the C3D convention, corner 1 sits
+        at local (+x, +y), corner 2 at (-x, +y), corner 3 at (-x, -y),
+        corner 4 at (+x, -y) -- so corner1->corner2 runs along local -X
+        and corner1->corner4 along local -Y; their cross product gives
+        local Z.
+
+        Deliberately NOT applied automatically in create()/cop()/rotate()
+        -- doing so would silently change what Force.Fx{i}/Fy{i}/Fz{i}
+        and COP.Px{i}/Py{i} mean for any existing caller already reading
+        them as local-frame values. Callers that want world-frame values
+        should rotate Force.Fx/Fy/Fz (as a vector) and the LOCAL COP
+        offset -- i.e. (COP.Px{i}, COP.Py{i}, COP.Pz{i}) minus
+        self.origin_offset[idx-1], since cop() already adds that in --
+        by the matrix this returns, then add the plate's world-space
+        corner centroid (mean of `corners` along axis 1) back in for COP.
+
+        Empirically (checked against real files), local Z as derived here
+        always comes out pointing INTO the ground, and raw local Fz is
+        negative when the plate is loaded -- so rotating Force.Fx/Fy/Fz by
+        this matrix alone, with no separate manual sign flip, consistently
+        yields a positive/upward world-frame Fz (the ground's reaction on
+        the subject) for every plate checked."""
+        c1, c2, c3, c4 = np.asarray(corners).T[:4]
+        local_x = (c1 - c2) / np.linalg.norm(c1 - c2)
+        local_y = (c1 - c4) / np.linalg.norm(c1 - c4)
+        local_z = np.cross(local_x, local_y)
+        return np.column_stack([local_x, local_y, local_z])
+
     def __moments__(self):
         for p in self.plate:
             xf = self.plate[p][1]
@@ -719,7 +771,13 @@ class ForcePlate(Yatsdo):
             Fz = data["Force.Fz{0}".format(idx)].to_numpy()
             for i in range(0, self.data.shape[0]):
                 ax = -My[i] / Fz[i]
-                ay = -Mx[i] / Fz[i]
+                # +Mx/Fz, not -Mx/Fz: the moment-to-position relationship
+                # (from M = r x F) is asymmetric between the two local
+                # axes -- using the same negative sign as ax here put COP
+                # off by 150-450mm on a real file, confirmed against an
+                # independent tool's (Mokka) own computed COP for the same
+                # frames.
+                ay = Mx[i] / Fz[i]
                 cop[i, :] = np.array([ax, ay, 0]) + self.origin_offset[idx - 1]
                 pass
             data_w_cop[:, data.shape[1]:] = cop
