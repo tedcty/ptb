@@ -25,6 +25,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.feature_selection import RFE, RFECV
 import threading
+from collections.abc import Mapping
 
 
 class WindowFrame(Enum):
@@ -266,7 +267,10 @@ class MLOperations:
 
         :param x: M x N DataFrame
         :param features: Dictionary of features
-        :param fc_parameters: Set fc_parameters ComprehensiveFCParameters or MinimalFCParameters
+        :param fc_parameters: The feature set, either
+            MLKeys.CFCParameters (ComprehensiveFCParameters) or MLKeys.MFCParameters
+            (MinimalFCParameters), or a tsfresh settings object used as-is, e.g.
+            EfficientFCParameters() or a dict of {feature: params}
         :return: extracted features from x
         """
         if n_jobs is None:
@@ -276,20 +280,12 @@ class MLOperations:
         # We construct a Distributor that will spawn the calculations
         # over four threads on the local machine
         if features is None:
-            if fc_parameters is MLKeys.CFCParameters:
-                efx = extract_features(x,
-                                       column_id="id",
-                                       column_sort="time",
-                                       default_fc_parameters=ComprehensiveFCParameters(),
-                                       impute_function=impute,
-                                       n_jobs=n_jobs)
-            else:
-                efx = extract_features(x,
-                                       column_id="id",
-                                       column_sort="time",
-                                       default_fc_parameters=MinimalFCParameters(),
-                                       impute_function=impute,
-                                       n_jobs=n_jobs)
+            efx = extract_features(x,
+                                   column_id="id",
+                                   column_sort="time",
+                                   default_fc_parameters=MLOperations.fc_settings(fc_parameters),
+                                   impute_function=impute,
+                                   n_jobs=n_jobs)
         else:
             efx = extract_features(x,
                                    column_id="id",
@@ -297,11 +293,43 @@ class MLOperations:
                                    kind_to_fc_parameters=features,
                                    impute_function=impute,
                                    n_jobs=n_jobs)
-        param = {"fc_parameters": fc_parameters.name,
+        param = {"fc_parameters": MLOperations.fc_name(fc_parameters),
                  "column_id": 'id',
                  "column_sort": 'time',
                  "features": [cl for cl in efx.columns]}
         return efx, param
+
+    @staticmethod
+    def fc_settings(fc_parameters):
+        """
+        The tsfresh settings for an fc_parameters argument of extract_features_from_x.
+
+        A tsfresh settings object (EfficientFCParameters() etc.) subclasses UserDict,
+        so it's a Mapping but not a dict: it's checked as a Mapping. Up to 0.3.27 it
+        fell through to MinimalFCParameters, so a caller asking for Efficient silently
+        got Minimal's features.
+        """
+        if fc_parameters is MLKeys.CFCParameters:
+            return ComprehensiveFCParameters()
+        if isinstance(fc_parameters, Mapping):
+            return fc_parameters
+        if fc_parameters is MLKeys.MFCParameters:
+            return MinimalFCParameters()
+        # Any other MLKeys member has always meant Minimal; kept so existing callers
+        # get the same features.
+        if isinstance(fc_parameters, MLKeys):
+            return MinimalFCParameters()
+        raise TypeError("fc_parameters must be MLKeys.CFCParameters, MLKeys.MFCParameters or a tsfresh "
+                        "settings mapping such as EfficientFCParameters(), not {0!r}".format(fc_parameters))
+
+    @staticmethod
+    def fc_name(fc_parameters):
+        """The name recorded in extract_features_from_x's param: the MLKeys member's name, or
+        the settings class's name (e.g. "EfficientFCParameters"). A settings object has no
+        .name, which raised AttributeError up to 0.3.27."""
+        if isinstance(fc_parameters, MLKeys):
+            return fc_parameters.name
+        return type(fc_parameters).__name__
 
     @staticmethod
     def select_and_train_model(efx: pd.DataFrame, y: pd.Series, jobs=None):
